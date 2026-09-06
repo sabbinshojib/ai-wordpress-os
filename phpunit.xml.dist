@@ -2,16 +2,23 @@
 <phpunit
 	bootstrap="tests/bootstrap.php"
 	colors="true"
-	convertErrorsToExceptions="true"
-	convertNoticesToExceptions="true"
-	convertWarningsToExceptions="true"
 >
+	<!--
+		tests/Unit and tests/Integration hold the project's native test
+		classes (AIOS\Tests\*Test extends AIOS\Tests\TestCase, run
+		directly by `php tests/run.php`) — they do NOT extend
+		PHPUnit\Framework\TestCase, so PHPUnit cannot discover tests in
+		them directly (confirmed: pointing PHPUnit at them produces only
+		"does not extend PHPUnit\Framework\TestCase" warnings and zero
+		executed tests). tests/PHPUnit/NativeSuiteBridgeTest.php bridges
+		every native class into a real, PHPUnit-executed assertion
+		instead — see that file's docblock for why. `php tests/run.php`
+		remains the detailed, per-method runner; this config is what
+		lets `vendor/bin/phpunit` run the same suite in CI.
+	-->
 	<testsuites>
-		<testsuite name="unit">
-			<directory>tests/Unit</directory>
-		</testsuite>
-		<testsuite name="integration">
-			<directory>tests/Integration</directory>
+		<testsuite name="native-bridge">
+			<directory>tests/PHPUnit</directory>
 		</testsuite>
 	</testsuites>
 </phpunit>

@@ -1,0 +1,15 @@
+# Composer / PHP
+/vendor/
+composer.phar
+
+# PHPUnit
+.phpunit.cache/
+.phpunit.result.cache
+
+# Node / JS build tooling
+/build/dashboard-src/node_modules/
+npm-debug.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
