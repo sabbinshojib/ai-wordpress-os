@@ -15,7 +15,7 @@ use AIOS\Tests\TestCase;
 final class SettingsTest extends TestCase {
 
 	public function test_defaults_are_safe(): void {
-		$GLOBALS['__wp_shim']['options']['ai_os_settings'] = array();
+		update_option( 'ai_os_settings', array() );
 		$settings = new Settings();
 
 		$this->assertEquals( Settings::MODE_SAFE, $settings->mode() );
@@ -28,23 +28,23 @@ final class SettingsTest extends TestCase {
 	}
 
 	public function test_sanitize_rejects_invalid_mode(): void {
-		$GLOBALS['__wp_shim']['options']['ai_os_settings'] = array( 'mode' => 'yolo' );
+		update_option( 'ai_os_settings', array( 'mode' => 'yolo' ) );
 		$settings = new Settings();
 		$this->assertEquals( Settings::MODE_SAFE, $settings->mode(), 'invalid mode must fall back to safe' );
 	}
 
 	public function test_int_clamping(): void {
-		$GLOBALS['__wp_shim']['options']['ai_os_settings'] = array(
+		update_option( 'ai_os_settings', array(
 			'rate_limit_requests' => 100000,
 			'approval_ttl_minutes' => -5,
-		);
+		) );
 		$settings = new Settings();
 		$this->assertEquals( 10000, $settings->rateLimitRequests() );
 		$this->assertEquals( 1, $settings->approvalTtlMinutes() );
 	}
 
 	public function test_update_and_save_roundtrip(): void {
-		$GLOBALS['__wp_shim']['options']['ai_os_settings'] = array();
+		update_option( 'ai_os_settings', array() );
 		$settings = new Settings();
 		$settings->update( array( 'mode' => 'balanced', 'audit_retention_days' => 30 ) );
 

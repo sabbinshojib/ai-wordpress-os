@@ -169,6 +169,12 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		if ( ! wp_next_scheduled( 'ai_os_daily_maintenance' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'ai_os_daily_maintenance' );
 		}
+
+		// Provision a site created after network activation (BUG-005):
+		// WordPress fires this once, with the new WP_Site, whenever a
+		// site is added to the network — regardless of which site's
+		// request happened to trigger the creation.
+		add_action( 'wp_insert_site', array( new Activator(), 'provisionNewSite' ) );
 	}
 
 	/**

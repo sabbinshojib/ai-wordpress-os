@@ -29,7 +29,7 @@ final class DatabaseTest extends TestCase {
         }
 
         public function test_migration_generates_all_four_tables(): void {
-                $GLOBALS['__wp_shim']['options']['ai_os_migrations'] = array();
+                update_option( 'ai_os_migrations', array() );
                 $db       = new Database();
                 $migrator = new Migrator();
                 $result   = $migrator->migrate( $db );
@@ -41,7 +41,7 @@ final class DatabaseTest extends TestCase {
         }
 
         public function test_migration_is_idempotent(): void {
-                $GLOBALS['__wp_shim']['options']['ai_os_migrations'] = array( '202501010001' );
+                update_option( 'ai_os_migrations', array( '202501010001' ) );
                 $migrator = new Migrator();
                 $result   = $migrator->migrate( new Database() );
                 $this->assertEquals( array(), $result['applied'], 'second run must be a no-op' );

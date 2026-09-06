@@ -145,7 +145,7 @@ final class McpServerTest extends TestCase {
 	}
 
 	public function test_tools_call_permission_denied_for_editor(): void {
-		$GLOBALS['__wp_shim']['options']['ai_os_settings'] = array( 'mode' => 'safe' );
+		update_option( 'ai_os_settings', array( 'mode' => 'safe' ) );
 		$body = $this->call( 'tools/call', array( 'name' => 'plugin.list' ), 1, $this->editorUser() );
 
 		// plugin.list requires activate_plugins/manage_options caps;

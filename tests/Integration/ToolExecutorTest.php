@@ -355,7 +355,7 @@ final class ToolExecutorTest extends TestCase {
         public function test_escalation_blocklist_refuses_security_state_changes(): void {
                 // Even in advanced mode with an admin, the executor blocklist
                 // must refuse settings/options mutation attempts.
-                $GLOBALS['__wp_shim']['options']['ai_os_settings'] = array( 'mode' => 'advanced' );
+                update_option( 'ai_os_settings', array( 'mode' => 'advanced' ) );
 
                 $result = $this->executor()->execute(
                         'options.update',
@@ -457,7 +457,7 @@ final class ToolExecutorTest extends TestCase {
         }
 
         public function test_editor_ceiling_blocks_sensitive_tools_even_balanced(): void {
-                $GLOBALS['__wp_shim']['options']['ai_os_settings'] = array( 'mode' => 'balanced' );
+                update_option( 'ai_os_settings', array( 'mode' => 'balanced' ) );
                 $this->executor()->execute( 'content.create_post', array( 'title' => 'x' ), $this->editorUser(), 'test' );
 
                 // Editor (no edit_others_posts) ceiling stays at 1.

@@ -27,6 +27,9 @@ if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
         define( 'MINUTE_IN_SECONDS', 60 );
         define( 'HOUR_IN_SECONDS', 3600 );
         define( 'DAY_IN_SECONDS', 86400 );
+        define( 'WEEK_IN_SECONDS', 7 * 86400 );
+        define( 'MONTH_IN_SECONDS', 30 * 86400 );
+        define( 'YEAR_IN_SECONDS', 365 * 86400 );
 }
 
 if ( ! defined( 'ARRAY_A' ) ) {
@@ -48,6 +51,21 @@ $GLOBALS['__wp_shim'] = array(
         'posts'      => array(),
         'sitecache'  => array(),
         'current_user' => null,
+        // Minimal multisite support (BUG-005): a network is just a list
+        // of blog ids plus a "which one is current" pointer. Real
+        // per-site table isolation is verified via 'created_tables'
+        // (dbDelta() below logs every table name it is asked to create)
+        // rather than by making the wpdb SQL-regex engine understand
+        // arbitrary "wp_2_..." prefixes — that engine is a deliberately
+        // small single-site test double, not a SQL parser, and teaching
+        // it full multisite prefix handling is out of this sprint's
+        // scope (see docs/roadmap/IMPLEMENTATION-TRACKER.md T-018).
+        'multisite'         => false,
+        'network_active'    => true,
+        'sites'             => array( 1 ), // blog ids; 1 = main site.
+        'current_blog_id'   => 1,
+        'blog_switch_stack' => array(),
+        'created_tables'    => array(),
 );
 
 function __shim_state(): array {
@@ -71,6 +89,12 @@ function __reset_shim(): void {
                 'sitecache'  => array(),
                 'current_user' => null,
                 'routes'     => array(),
+                'multisite'         => false,
+                'network_active'    => true,
+                'sites'             => array( 1 ),
+                'current_blog_id'   => 1,
+                'blog_switch_stack' => array(),
+                'created_tables'    => array(),
         );
         $GLOBALS['wpdb'] = new wpdb();
 }
@@ -85,9 +109,18 @@ function plugin_dir_url( string $file ): string {
 
 /* --------------------------------------------------------------- options */
 
+/**
+ * Options and transients are keyed by the CURRENT blog id (BUG-005),
+ * exactly like real WordPress (they live in each site's own
+ * wp_options table). Every existing single-site test leaves
+ * current_blog_id at its default of 1 and never calls
+ * switch_to_blog(), so this is purely additive: those tests see
+ * identical behavior to the previous flat store, just nested one
+ * level under blog id 1.
+ */
 function get_option( string $name, mixed $default = false ): mixed {
-        $state = __shim_state();
-        return $state['options'][ $name ] ?? $default;
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        return $GLOBALS['__wp_shim']['options'][ $blog_id ][ $name ] ?? $default;
 }
 
 function get_site_option( string $name, mixed $default = false ): mixed {
@@ -103,33 +136,39 @@ function delete_site_transient( string $key ): bool {
 }
 
 function update_option( string $name, mixed $value, bool $autoload = true ): bool {
-        $GLOBALS['__wp_shim']['options'][ $name ] = $value;
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        $GLOBALS['__wp_shim']['options'][ $blog_id ][ $name ] = $value;
         return true;
 }
 
 function delete_option( string $name ): bool {
-        unset( $GLOBALS['__wp_shim']['options'][ $name ] );
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        unset( $GLOBALS['__wp_shim']['options'][ $blog_id ][ $name ] );
         return true;
 }
 
 function add_option( string $name, mixed $value ): bool {
-        $GLOBALS['__wp_shim']['options'][ $name ] = $value;
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        $GLOBALS['__wp_shim']['options'][ $blog_id ][ $name ] = $value;
         return true;
 }
 
 /* ------------------------------------------------------------ transients */
 
 function get_transient( string $key ): mixed {
-        return $GLOBALS['__wp_shim']['transients'][ $key ] ?? false;
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        return $GLOBALS['__wp_shim']['transients'][ $blog_id ][ $key ] ?? false;
 }
 
 function set_transient( string $key, mixed $value, int $expiration = 0 ): bool {
-        $GLOBALS['__wp_shim']['transients'][ $key ] = $value;
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        $GLOBALS['__wp_shim']['transients'][ $blog_id ][ $key ] = $value;
         return true;
 }
 
 function delete_transient( string $key ): bool {
-        unset( $GLOBALS['__wp_shim']['transients'][ $key ] );
+        $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+        unset( $GLOBALS['__wp_shim']['transients'][ $blog_id ][ $key ] );
         return true;
 }
 
@@ -247,7 +286,51 @@ function get_bloginfo( string $name ): string {
 }
 
 function is_multisite(): bool {
-        return false;
+        return $GLOBALS['__wp_shim']['multisite'];
+}
+
+/**
+ * @param array{fields?: string} $args
+ * @return array<int, int>|array<int, object{blog_id: int}>
+ */
+function get_sites( array $args = array() ): array {
+        $ids = $GLOBALS['__wp_shim']['sites'];
+        if ( 'ids' === ( $args['fields'] ?? '' ) ) {
+                return array_map( 'intval', $ids );
+        }
+        return array_map( static fn( int $id ): object => (object) array( 'blog_id' => $id ), $ids );
+}
+
+function get_current_blog_id(): int {
+        return (int) $GLOBALS['__wp_shim']['current_blog_id'];
+}
+
+/**
+ * Mirrors real WP prefixing: the main site (blog 1) uses the bare
+ * prefix; every other site gets "{prefix}{blog_id}_".
+ */
+function switch_to_blog( int $blog_id ): bool {
+        global $wpdb;
+        $GLOBALS['__wp_shim']['blog_switch_stack'][] = array( $GLOBALS['__wp_shim']['current_blog_id'], $wpdb->prefix );
+        $GLOBALS['__wp_shim']['current_blog_id'] = $blog_id;
+        $wpdb->prefix = 1 === $blog_id ? 'wp_' : 'wp_' . $blog_id . '_';
+        return true;
+}
+
+function restore_current_blog(): bool {
+        global $wpdb;
+        $previous = array_pop( $GLOBALS['__wp_shim']['blog_switch_stack'] );
+        if ( null === $previous ) {
+                return false;
+        }
+        [ $blog_id, $prefix ]                      = $previous;
+        $GLOBALS['__wp_shim']['current_blog_id']   = $blog_id;
+        $wpdb->prefix                              = $prefix;
+        return true;
+}
+
+function is_plugin_active_for_network( string $plugin ): bool {
+        return $GLOBALS['__wp_shim']['network_active'];
 }
 
 function is_ssl(): bool {
@@ -760,6 +843,8 @@ function check_admin_referer( string $action = '-1' ): bool {
  */
 class wpdb {
         public string $prefix = 'wp_';
+        public string $options = 'wp_options';
+        public string $sitemeta = 'wp_sitemeta';
         public string $last_error = '';
         public int $insert_id = 0;
         public int $rows_affected = 0;
@@ -1107,6 +1192,49 @@ class wpdb {
                 return $results[0] ?? null;
         }
 
+        /**
+         * uninstall.php's rate-limiter transient scan (spec BUG-005) is
+         * the only caller: "SELECT option_name FROM {$wpdb->options}
+         * WHERE option_name LIKE '_transient_ai_os_rl_%'" (or the
+         * sitemeta/_site_transient_ equivalent). The shim keeps
+         * transients in their own per-blog store rather than modeling
+         * wp_options as literal rows (see the class docblock), so this
+         * translates the LIKE-pattern scan into a scan over that store
+         * instead of real SQL — enough to verify uninstall.php's cleanup
+         * logic finds exactly the keys it should, without building a
+         * general-purpose SQL engine for a single, narrow call site.
+         *
+         * @return string[]
+         */
+        public function get_col( string $sql ): array {
+                $blog_id = $GLOBALS['__wp_shim']['current_blog_id'] ?? 1;
+
+                if ( preg_match( "/option_name\\s+like\\s+'_transient_(.*?)%?'/i", $sql, $m ) ) {
+                        $matches = array();
+                        foreach ( array_keys( $GLOBALS['__wp_shim']['transients'][ $blog_id ] ?? array() ) as $key ) {
+                                if ( str_starts_with( $key, $m[1] ) ) {
+                                        $matches[] = '_transient_' . $key;
+                                }
+                        }
+                        return $matches;
+                }
+
+                if ( preg_match( "/meta_key\\s+like\\s+'_site_transient_(.*?)%?'/i", $sql, $m ) ) {
+                        $matches = array();
+                        // Site-wide ("network") transients are modeled with
+                        // a "site:" key prefix regardless of current blog —
+                        // see get_site_option()/delete_site_transient().
+                        foreach ( array_keys( $GLOBALS['__wp_shim']['transients'][1] ?? array() ) as $key ) {
+                                if ( str_starts_with( $key, 'site:' . $m[1] ) ) {
+                                        $matches[] = '_site_transient_' . substr( $key, strlen( 'site:' ) );
+                                }
+                        }
+                        return $matches;
+                }
+
+                return array();
+        }
+
         public function get_var( string $sql ): mixed {
                 if ( preg_match( '/select\s+count\(\*\)\s+from\s+`?wp_([a-z_]+)`?\s+where\s+(.+)$/is', $sql, $m ) ) {
                         $rows = array_filter( $this->tables[ $m[1] ] ?? array(), fn( array $r ): bool => $this->rowMatches( $r, $m[2] ) );
@@ -1167,7 +1295,16 @@ $GLOBALS['wpdb'] = new wpdb();
 
 function dbDelta( array|string $queries = array() ): array {
         // In tests, CREATE TABLE statements succeed silently; the wpdb
-        // shim pre-creates table storage on demand.
+        // shim pre-creates table storage on demand. The table name IS
+        // logged (BUG-005) so multisite provisioning tests can assert
+        // exactly which site-prefixed tables a migration run touched,
+        // without needing the wpdb SQL-regex engine to fully understand
+        // multisite prefixes.
+        foreach ( is_array( $queries ) ? $queries : array( $queries ) as $sql ) {
+                if ( preg_match( '/create\s+table\s+`?([a-zA-Z0-9_]+)`?/i', (string) $sql, $m ) ) {
+                        $GLOBALS['__wp_shim']['created_tables'][] = $m[1];
+                }
+        }
         return array();
 }
 

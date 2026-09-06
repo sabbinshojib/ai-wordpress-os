@@ -175,9 +175,12 @@ abstract class TestCase {
         protected function resetPlugin(): void {
                 __reset_shim();
 
-                // Default settings + pre-applied migration marker.
-                $GLOBALS['__wp_shim']['options']['ai_os_settings'] = array();
-                $GLOBALS['__wp_shim']['options']['ai_os_migrations'] = array( '202501010001' );
+                // Default settings + pre-applied migration marker. Uses the
+                // real accessor functions (not a raw array poke) so this
+                // stays correct regardless of the shim's internal storage
+                // shape — e.g. options became blog-scoped for BUG-005.
+                update_option( 'ai_os_settings', array() );
+                update_option( 'ai_os_migrations', array( '202501010001' ) );
 
                 // Rebuild the kernel for full isolation.
                 $property = new \ReflectionProperty( \AIOS\Core\Plugin::class, 'instance' );
