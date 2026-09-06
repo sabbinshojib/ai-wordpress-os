@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AIOS\Database\Repositories;
 
 use AIOS\Database\Database;
+use AIOS\Support\Strings;
 
 final class AuditLogRepository {
 
@@ -39,14 +40,14 @@ final class AuditLogRepository {
 		$row = array(
 			'occurred_at'      => current_time( 'mysql', true ),
 			'user_id'          => (int) ( $entry['user_id'] ?? 0 ),
-			'client'           => mb_substr( (string) ( $entry['client'] ?? '' ), 0, 64 ),
-			'principal_type'   => mb_substr( (string) ( $entry['principal_type'] ?? 'user' ), 0, 20 ),
-			'tool'             => mb_substr( (string) ( $entry['tool'] ?? '' ), 0, 190 ),
-			'action'           => mb_substr( (string) ( $entry['action'] ?? '' ), 0, 190 ),
+			'client'           => Strings::truncate( (string) ( $entry['client'] ?? '' ), 64 ),
+			'principal_type'   => Strings::truncate( (string) ( $entry['principal_type'] ?? 'user' ), 20 ),
+			'tool'             => Strings::truncate( (string) ( $entry['tool'] ?? '' ), 190 ),
+			'action'           => Strings::truncate( (string) ( $entry['action'] ?? '' ), 190 ),
 			'args_hash'        => (string) ( $entry['args_hash'] ?? '' ),
 			'args_json'        => isset( $entry['args_json'] ) && is_string( $entry['args_json'] ) ? $entry['args_json'] : null,
 			'risk'             => max( 0, min( 4, (int) ( $entry['risk'] ?? 0 ) ) ),
-			'status'           => mb_substr( (string) ( $entry['status'] ?? 'ok' ), 0, 20 ),
+			'status'           => Strings::truncate( (string) ( $entry['status'] ?? 'ok' ), 20 ),
 			'error'            => isset( $entry['error'] ) && is_string( $entry['error'] ) ? $entry['error'] : null,
 			'affected_objects' => isset( $entry['affected_objects'] ) && is_array( $entry['affected_objects'] )
 				? wp_json_encode( $entry['affected_objects'] ) : null,
@@ -84,11 +85,11 @@ final class AuditLogRepository {
 		}
 		if ( ! empty( $filters['tool'] ) && is_string( $filters['tool'] ) ) {
 			$where[]  = 'tool = %s';
-			$values[] = mb_substr( $filters['tool'], 0, 190 );
+			$values[] = Strings::truncate( $filters['tool'], 190 );
 		}
 		if ( ! empty( $filters['status'] ) && is_string( $filters['status'] ) ) {
 			$where[]  = 'status = %s';
-			$values[] = mb_substr( $filters['status'], 0, 20 );
+			$values[] = Strings::truncate( $filters['status'], 20 );
 		}
 		if ( isset( $filters['risk'] ) && is_numeric( $filters['risk'] ) ) {
 			$where[]  = 'risk = %d';
@@ -100,7 +101,7 @@ final class AuditLogRepository {
 		}
 		if ( ! empty( $filters['search'] ) && is_string( $filters['search'] ) ) {
 			$where[]  = '(tool LIKE %s OR action LIKE %s OR error LIKE %s)';
-			$like     = '%' . $this->db->escLike( mb_substr( $filters['search'], 0, 100 ) ) . '%';
+			$like     = '%' . $this->db->escLike( Strings::truncate( $filters['search'], 100 ) ) . '%';
 			$values   = array_merge( $values, array( $like, $like, $like ) );
 		}
 

@@ -13,6 +13,7 @@ declare( strict_types=1 );
 namespace AIOS\Security;
 
 use AIOS\Database\Repositories\ApiKeyRepository;
+use AIOS\Support\Strings;
 use AIOS\Support\StructuredError;
 
 final class ApiKeyManager {
@@ -61,7 +62,7 @@ final class ApiKeyManager {
 
 		$id = $this->keys->create(
 			array(
-				'label'        => mb_substr( $label, 0, 190 ),
+				'label'        => Strings::truncate( $label, 190 ),
 				'key_prefix'   => substr( $raw_key, 0, 12 ),
 				'key_hash'     => \AIOS\Support\Crypto::keyHash( $raw_key ),
 				'user_id'      => $user_id,

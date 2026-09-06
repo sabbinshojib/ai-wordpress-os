@@ -31,6 +31,7 @@ final class AdminPages {
 		add_action( 'admin_menu', array( $this, 'registerMenu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueueAssets' ) );
 		add_action( 'admin_notices', array( $this, 'activationErrorNotice' ) );
+		add_action( 'admin_notices', array( $this, 'environmentWarningNotice' ) );
 
 		// First-run onboarding redirect.
 		add_action( 'admin_init', array( $this, 'maybeRedirectOnboarding' ) );
@@ -216,5 +217,28 @@ final class AdminPages {
 			esc_html( (string) ( $error['version'] ?? '' ) ),
 			esc_html( (string) ( $error['error'] ?? '' ) )
 		);
+	}
+
+	/**
+	 * Non-blocking notice for a degraded (but never fatal) optional
+	 * capability — e.g. a missing PHP extension that a graceful
+	 * fallback compensates for. This is informational (notice-warning),
+	 * unlike activationErrorNotice() above, which reports an actual
+	 * failure (notice-error).
+	 */
+	public function environmentWarningNotice(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$warnings = get_transient( 'ai_os_environment_warnings' );
+		if ( ! is_array( $warnings ) || array() === $warnings ) {
+			return;
+		}
+
+		echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'AI WordPress OS — reduced capability on this host:', 'ai-wordpress-os' ) . '</strong></p><ul style="list-style:disc;margin-left:1.5em;">';
+		foreach ( $warnings as $warning ) {
+			printf( '<li>%s</li>', esc_html( (string) $warning ) );
+		}
+		echo '</ul></div>';
 	}
 }

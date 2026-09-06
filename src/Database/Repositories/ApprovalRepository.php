@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AIOS\Database\Repositories;
 
 use AIOS\Database\Database;
+use AIOS\Support\Strings;
 
 final class ApprovalRepository {
 
@@ -46,11 +47,11 @@ final class ApprovalRepository {
                                 'created_at'  => current_time( 'mysql', true ),
                                 'expires_at'  => gmdate( 'Y-m-d H:i:s', time() + $expires * MINUTE_IN_SECONDS ),
                                 'user_id'     => (int) ( $data['user_id'] ?? 0 ),
-                                'client'      => mb_substr( (string) ( $data['client'] ?? '' ), 0, 64 ),
-                                'tool'        => mb_substr( (string) ( $data['tool'] ?? '' ), 0, 190 ),
+                                'client'      => Strings::truncate( (string) ( $data['client'] ?? '' ), 64 ),
+                                'tool'        => Strings::truncate( (string) ( $data['tool'] ?? '' ), 190 ),
                                 'args_json'   => wp_json_encode( $data['args'] ?? array() ),
                                 'risk'        => max( 0, min( 4, (int) ( $data['risk'] ?? 0 ) ) ),
-                                'reason'      => mb_substr( (string) ( $data['reason'] ?? '' ), 0, 5000 ),
+                                'reason'      => Strings::truncate( (string) ( $data['reason'] ?? '' ), 5000 ),
                                 'preview'     => isset( $data['preview'] ) && is_string( $data['preview'] ) ? $data['preview'] : null,
                                 'status'      => self::STATUS_PENDING,
                         )
@@ -158,7 +159,7 @@ final class ApprovalRepository {
                         $this->table(),
                         array(
                                 'status'            => self::STATUS_EXECUTED,
-                                'execution_status'  => mb_substr( $execution_status, 0, 20 ),
+                                'execution_status'  => Strings::truncate( $execution_status, 20 ),
                                 'execution_result'  => $result_json,
                                 'execution_log_id'  => $log_id,
                         ),

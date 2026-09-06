@@ -2,6 +2,8 @@
 
 ## Requirements
 
+### Hard requirements (activation is refused without these)
+
 | Requirement | Why |
 |---|---|
 | WordPress 6.9+ | Modern REST/REST-infrastructure APIs |
@@ -10,6 +12,17 @@
 | MySQL/MariaDB | Standard WordPress database (four custom tables are created) |
 
 No Composer, no Node.js, no Docker, no Redis, no shell access are required at runtime. The plugin is a single self-contained ZIP.
+
+### Optional PHP extensions (the plugin runs and activates without these — see below for exactly what each one affects)
+
+| Extension | What it's used for | What happens without it |
+|---|---|---|
+| `mbstring` | Character-accurate string length/truncation for stored fields (labels, audit entries, approval previews) | Falls back to a byte-based equivalent (`AIOS\Support\Strings`). Length limits still apply; on non-ASCII content the cut can land one character earlier than with `mbstring`, and the fallback is careful never to leave a broken multi-byte sequence at the boundary. |
+| `sodium` **or** `openssl` (at least one) | Secret encryption backend for `AIOS\Support\Crypto` | Nothing in the current (Phase 1) feature set calls this — API keys are hashed with PHP's built-in `hash()`, not encrypted. If neither extension is present, `Crypto::encrypt()`/`decrypt()` refuse to run with a clear, catchable error the moment a future feature needs them, instead of silently falling back to an insecure method. |
+
+`sodium` ships enabled by default on virtually every PHP 8.2+ build (it has been bundled since PHP 7.2), and `openssl` is close to universal on WordPress hosts, so hitting the "neither is available" case in practice is very unlikely — but it is checked and reported, not assumed.
+
+Check `wp ai-os status` (below) or **AI OS → Dashboard** for a live report of any degraded optional capability on your specific host. A degraded capability never blocks activation or shows as an error — it appears as a non-blocking warning notice.
 
 ## Install
 
@@ -36,7 +49,10 @@ wp ai-os status
 # MCP endpoint:   https://yoursite.com/wp-json/ai-os/v1/mcp
 # Tools:          31 available / 31 registered
 # Migrations:     up to date
+# Environment:    all optional capabilities available
 ```
+
+If an optional extension is missing, the last line instead lists exactly what is degraded, e.g. `Environment: 1 degraded capability/ies (never fatal): - The "mbstring" PHP extension is not loaded. ...`.
 
 Or check **AI OS → Dashboard** in wp-admin: mode, tool counts, DB state and MCP endpoint are on the status cards.
 

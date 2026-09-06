@@ -65,6 +65,15 @@ final class Crypto {
                         return self::b64( chr( self::SODIUM_VERSION ) . $nonce . $ciphertext );
                 }
 
+                if ( ! function_exists( 'openssl_encrypt' ) ) {
+                        // Neither backend is available on this host. Fail
+                        // loudly and catchably here rather than letting PHP
+                        // itself fatal a few lines below with "Call to
+                        // undefined function openssl_encrypt()" — there is
+                        // no safe plaintext fallback for "encryption".
+                        throw new \RuntimeException( 'ai-os: no encryption backend available (neither the "sodium" nor the "openssl" PHP extension is loaded).' );
+                }
+
                 $iv         = random_bytes( 12 );
                 $tag        = '';
                 $ciphertext = openssl_encrypt( $plaintext, 'aes-256-gcm', $this->key, OPENSSL_RAW_DATA, $iv, $tag, '', 16 );
@@ -95,6 +104,13 @@ final class Crypto {
                 }
 
                 if ( self::OPENSSL_VERSION === $version ) {
+                        if ( ! function_exists( 'openssl_decrypt' ) ) {
+                                // No backend to decrypt an openssl-tagged blob
+                                // with. Consistent with every other "cannot
+                                // process this input" case here: return null
+                                // rather than let PHP fatal.
+                                return null;
+                        }
                         // iv(12) + tag(16) + ciphertext
                         if ( strlen( $body ) <= 28 ) {
                                 return null;

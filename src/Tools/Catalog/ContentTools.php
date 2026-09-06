@@ -16,6 +16,7 @@ use AIOS\Abilities\Ability;
 use AIOS\Abilities\AbilityResult;
 use AIOS\Abilities\AbilityRegistry;
 use AIOS\Security\PromptHygiene;
+use AIOS\Support\Strings;
 use AIOS\Tools\Tool;
 use AIOS\Tools\ToolRegistry;
 use WP_Error;
@@ -474,7 +475,7 @@ final class ContentTools implements CatalogProviderInterface {
 				continue;
 			}
 			$value = $values[0];
-			if ( is_serialized( $value ) || mb_strlen( (string) $value ) > 2000 ) {
+			if ( is_serialized( $value ) || Strings::length( (string) $value ) > 2000 ) {
 				$value = '(complex value)';
 			}
 			$clean_meta[ $key ] = $value;

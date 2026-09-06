@@ -100,6 +100,9 @@ final class SiteController extends AbstractController {
                                         'file_read'      => $settings->fileReadEnabled(),
                                         'db_up_to_date'  => $this->container->get( \AIOS\Database\Migrator::class )->isUpToDate(),
                                 ),
+                                'environment' => array(
+                                        'degraded_capabilities' => \AIOS\Core\EnvironmentGuard::degradedCapabilities(),
+                                ),
                                 'tools' => array(
                                         'registered' => $tools->count(),
                                         'available'  => $tools->countAvailable(),

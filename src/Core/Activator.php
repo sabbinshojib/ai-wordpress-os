@@ -40,5 +40,16 @@ final class Activator {
 		if ( null !== $result['failed'] ) {
 			set_transient( 'ai_os_activation_error', $result['failed'], 10 * MINUTE_IN_SECONDS );
 		}
+
+		// Surface any degraded (never blocking) optional capability so
+		// an administrator knows before it matters — e.g. before a
+		// future feature that needs AIOS\Support\Crypto's encryption
+		// backend actually runs on this host.
+		$degraded = EnvironmentGuard::degradedCapabilities();
+		if ( array() !== $degraded ) {
+			set_transient( 'ai_os_environment_warnings', $degraded, WEEK_IN_SECONDS );
+		} else {
+			delete_transient( 'ai_os_environment_warnings' );
+		}
 	}
 }

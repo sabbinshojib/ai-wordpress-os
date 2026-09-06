@@ -170,10 +170,10 @@ final class Validator {
                         return array();
                 }
                 $errors = array();
-                if ( isset( $schema['minLength'] ) && mb_strlen( $value ) < (int) $schema['minLength'] ) {
+                if ( isset( $schema['minLength'] ) && Strings::length( $value ) < (int) $schema['minLength'] ) {
                         $errors[] = sprintf( '%s must be at least %d characters.', $path, (int) $schema['minLength'] );
                 }
-                if ( isset( $schema['maxLength'] ) && mb_strlen( $value ) > (int) $schema['maxLength'] ) {
+                if ( isset( $schema['maxLength'] ) && Strings::length( $value ) > (int) $schema['maxLength'] ) {
                         $errors[] = sprintf( '%s must be at most %d characters.', $path, (int) $schema['maxLength'] );
                 }
                 if ( isset( $schema['pattern'] ) && is_string( $schema['pattern'] ) ) {

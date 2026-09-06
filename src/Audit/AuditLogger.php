@@ -18,6 +18,7 @@ namespace AIOS\Audit;
 use AIOS\Database\Repositories\AuditLogRepository;
 use AIOS\Settings\Settings;
 use AIOS\Support\Sanitize;
+use AIOS\Support\Strings;
 use WP_User;
 
 final class AuditLogger {
@@ -74,7 +75,7 @@ final class AuditLogger {
 					'args_hash'        => $args_hash,
 					'risk'             => (int) ( $event['risk'] ?? 0 ),
 					'status'           => (string) ( $event['status'] ?? self::STATUS_OK ),
-					'error'            => isset( $event['error'] ) && is_string( $event['error'] ) ? Sanitize::redactString( mb_substr( $event['error'], 0, 2000 ) ) : null,
+					'error'            => isset( $event['error'] ) && is_string( $event['error'] ) ? Sanitize::redactString( Strings::truncate( $event['error'], 2000 ) ) : null,
 					'affected_objects' => isset( $event['affected_objects'] ) && is_array( $event['affected_objects'] ) ? $event['affected_objects'] : null,
 					'affected_files'   => isset( $event['affected_files'] ) && is_array( $event['affected_files'] ) ? $event['affected_files'] : null,
 					'approval_id'      => isset( $event['approval_id'] ) ? (int) $event['approval_id'] : null,

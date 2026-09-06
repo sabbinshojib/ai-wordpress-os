@@ -48,6 +48,16 @@ final class CliCommands extends WP_CLI_Command {
 		/** @var Migrator $migrator */
 		$migrator = $container->get( Migrator::class );
 		WP_CLI::line( 'Migrations:     ' . ( $migrator->isUpToDate() ? 'up to date' : 'PENDING' ) );
+
+		$degraded = \AIOS\Core\EnvironmentGuard::degradedCapabilities();
+		if ( array() === $degraded ) {
+			WP_CLI::line( 'Environment:    all optional capabilities available' );
+		} else {
+			WP_CLI::line( 'Environment:    ' . count( $degraded ) . ' degraded capability/ies (never fatal):' );
+			foreach ( $degraded as $message ) {
+				WP_CLI::line( '  - ' . $message );
+			}
+		}
 	}
 
 	/**

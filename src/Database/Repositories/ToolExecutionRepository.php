@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AIOS\Database\Repositories;
 
 use AIOS\Database\Database;
+use AIOS\Support\Strings;
 
 final class ToolExecutionRepository {
 
@@ -28,12 +29,12 @@ final class ToolExecutionRepository {
 			$this->table(),
 			array(
 				'occurred_at'  => current_time( 'mysql', true ),
-				'tool'         => mb_substr( $tool, 0, 190 ),
+				'tool'         => Strings::truncate( $tool, 190 ),
 				'user_id'      => $user_id,
-				'client'       => mb_substr( $client, 0, 64 ),
+				'client'       => Strings::truncate( $client, 64 ),
 				'success'      => $success ? 1 : 0,
 				'duration_ms'  => max( 0, $duration_ms ),
-				'error_code'   => mb_substr( $error_code, 0, 120 ),
+				'error_code'   => Strings::truncate( $error_code, 120 ),
 			)
 		);
 		return $id ?? 0;

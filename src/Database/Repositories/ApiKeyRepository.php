@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AIOS\Database\Repositories;
 
 use AIOS\Database\Database;
+use AIOS\Support\Strings;
 
 final class ApiKeyRepository {
 
@@ -36,8 +37,8 @@ final class ApiKeyRepository {
                         $this->table(),
                         array(
                                 'created_at'   => current_time( 'mysql', true ),
-                                'label'        => mb_substr( (string) ( $data['label'] ?? '' ), 0, 190 ),
-                                'key_prefix'   => mb_substr( (string) ( $data['key_prefix'] ?? '' ), 0, 12 ),
+                                'label'        => Strings::truncate( (string) ( $data['label'] ?? '' ), 190 ),
+                                'key_prefix'   => Strings::truncate( (string) ( $data['key_prefix'] ?? '' ), 12 ),
                                 'key_hash'     => (string) ( $data['key_hash'] ?? '' ),
                                 'user_id'      => (int) ( $data['user_id'] ?? 0 ),
                                 'capabilities' => wp_json_encode( $data['capabilities'] ?? array() ),

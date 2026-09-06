@@ -103,6 +103,6 @@ final class Sanitize {
 	 * Normalize a "search" string for safe DB LIKE usage.
 	 */
 	public static function like( string $text ): string {
-		return mb_substr( trim( $text ), 0, 200 );
+		return Strings::truncate( trim( $text ), 200 );
 	}
 }
