@@ -134,6 +134,10 @@ final class ToolsController extends AbstractController {
 	 * POST /tools/execute — run a tool through the executor pipeline.
 	 */
 	public function execute( WP_REST_Request $request ): WP_REST_Response {
+		if ( ! $this->verifyNonce( $request ) ) {
+			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+		}
+
 		/** @var ToolExecutor $executor */
 		$executor = $this->container->get( ToolExecutor::class );
 
