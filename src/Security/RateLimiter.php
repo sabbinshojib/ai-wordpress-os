@@ -1,11 +1,21 @@
 <?php
 /**
- * Rolling-window rate limiter.
+ * Rolling-window rate limiter (spec Sprint 0.3A-A).
  *
- * Uses transients (object-cache friendly, spec §38). One window per
- * principal per counter name. Atomicity note: the check-and-increment
- * is not strictly atomic under extreme concurrency; acceptable here
- * because limits are protective, not billing-precise.
+ * Backed by a real database row per principal-counter pair, written
+ * with a single atomic `INSERT ... ON DUPLICATE KEY UPDATE` statement
+ * (see `RateLimitRepository::hit()`). This replaces an earlier
+ * transient-based implementation whose check-and-increment was two
+ * separate operations (get_transient() then set_transient()) — two
+ * concurrent requests for the same principal could both read the
+ * pre-increment count and both conclude they were still under the
+ * limit, letting the limit be exceeded under real concurrency. A
+ * transient/object-cache approach cannot close this without either an
+ * atomic cache backend (not guaranteed — WordPress's default
+ * non-persistent object cache is per-request only, and is not
+ * guaranteed to be present or atomic even when a persistent backend
+ * is configured) or a database row lock; the row lock is what every
+ * WordPress host already has, unconditionally.
  *
  * @package AIOS\Security
  */
@@ -14,18 +24,25 @@ declare( strict_types=1 );
 
 namespace AIOS\Security;
 
+use AIOS\Database\Repositories\RateLimitRepository;
+
 final class RateLimiter {
 
 	private const PREFIX = 'ai_os_rl_';
+
+	private RateLimitRepository $repository;
 
 	/**
 	 * @param int $limit   Max events per window.
 	 * @param int $window  Window length in seconds.
 	 */
 	public function __construct(
+		RateLimitRepository $repository,
 		private int $limit = 120,
 		private int $window = 60
-	) {}
+	) {
+		$this->repository = $repository;
+	}
 
 	/**
 	 * Configure from settings (invoked by the service provider).
@@ -39,22 +56,21 @@ final class RateLimiter {
 	 * Record an event and report whether the principal is still within
 	 * the limit.
 	 *
+	 * Fails CLOSED: if the counter cannot be read back after recording
+	 * the hit (e.g. the underlying table is unexpectedly missing), the
+	 * request is treated as OVER the limit rather than silently
+	 * unlimited — a rate limiter that fails open on infrastructure
+	 * trouble is not actually a limit (spec: "no silent rate-limit
+	 * bypass").
+	 *
 	 * @param string $principal Stable principal id (e.g. "user:42").
 	 */
 	public function allow( string $principal, string $counter = 'default' ): bool {
-		$key = self::PREFIX . $counter . '_' . md5( $principal );
-
-		$bucket = get_transient( $key );
-		if ( ! is_array( $bucket ) || ! isset( $bucket['reset_at'] ) || $bucket['reset_at'] <= time() ) {
-			$bucket = array( 'count' => 0, 'reset_at' => time() + $this->window );
+		$count = $this->repository->hit( $this->rateKey( $principal, $counter ), $this->window );
+		if ( null === $count ) {
+			return false;
 		}
-
-		$bucket['count']++;
-
-		// Renew TTL so idle principals clean themselves up.
-		set_transient( $key, $bucket, $this->window * 2 );
-
-		return $bucket['count'] <= $this->limit;
+		return $count <= $this->limit;
 	}
 
 	/**
@@ -63,9 +79,10 @@ final class RateLimiter {
 	 * @return array{limit: int, window: int, retry_after: int}
 	 */
 	public function meta( string $principal, string $counter = 'default' ): array {
-		$key     = self::PREFIX . $counter . '_' . md5( $principal );
-		$bucket  = get_transient( $key );
-		$reset   = is_array( $bucket ) && isset( $bucket['reset_at'] ) ? (int) $bucket['reset_at'] : time() + $this->window;
+		$row   = $this->repository->get( $this->rateKey( $principal, $counter ) );
+		$reset = null !== $row ? strtotime( $row['reset_at'] . ' UTC' ) : false;
+		$reset = false === $reset ? time() + $this->window : $reset;
+
 		return array(
 			'limit'       => $this->limit,
 			'window'      => $this->window,
@@ -77,6 +94,18 @@ final class RateLimiter {
 	 * Reset (admin action / tests).
 	 */
 	public function reset( string $principal, string $counter = 'default' ): void {
-		delete_transient( self::PREFIX . $counter . '_' . md5( $principal ) );
+		$this->repository->clear( $this->rateKey( $principal, $counter ) );
+	}
+
+	/**
+	 * Per-principal, per-counter, per-site key. Site isolation is
+	 * automatic and requires no explicit blog id here: `Database::table()`
+	 * (used throughout `RateLimitRepository`) already resolves to the
+	 * CURRENT site's own `$wpdb->prefix`, exactly like every other AI
+	 * OS table — the same mechanism verified for multisite isolation
+	 * in tests/Integration/MultisiteLifecycleTest.php.
+	 */
+	private function rateKey( string $principal, string $counter ): string {
+		return self::PREFIX . $counter . '_' . hash( 'sha256', $principal );
 	}
 }

@@ -973,6 +973,56 @@ class wpdb {
         }
 
         public function query( string $sql ): int {
+                // Atomic upsert for RateLimitRepository::hit() (spec
+                // Sprint 0.3A-A): "INSERT ... VALUES (key, 1, reset_at)
+                // ON DUPLICATE KEY UPDATE count = IF(reset_at <= now, 1,
+                // count + 1), reset_at = IF(reset_at <= now, reset_at, reset_at)".
+                // A targeted parser for exactly this shape, not a general
+                // ON DUPLICATE KEY UPDATE engine — this shim is a small,
+                // deliberately scoped test double (see the class docblock).
+                if ( preg_match(
+                        '/insert\s+into\s+`?wp_([a-z_]+)`?\s*\(\s*rate_key\s*,\s*count\s*,\s*reset_at\s*\)\s*values\s*\(\s*\'((?:[^\'\\\\]|\\\\.)*)\'\s*,\s*1\s*,\s*\'((?:[^\'\\\\]|\\\\.)*)\'\s*\)\s*on\s+duplicate\s+key\s+update.*?reset_at\s*<=\s*\'((?:[^\'\\\\]|\\\\.)*)\'/is',
+                        $sql,
+                        $m
+                ) ) {
+                        $table        = $m[1];
+                        $rate_key     = stripslashes( $m[2] );
+                        $new_reset_at = stripslashes( $m[3] );
+                        $now          = stripslashes( $m[4] );
+
+                        $existing_index = null;
+                        foreach ( $this->tables[ $table ] ?? array() as $i => $row ) {
+                                if ( ( $row['rate_key'] ?? null ) === $rate_key ) {
+                                        $existing_index = $i;
+                                        break;
+                                }
+                        }
+
+                        if ( null === $existing_index ) {
+                                $row = array(
+                                        'id'       => count( $this->tables[ $table ] ?? array() ) + 1,
+                                        'rate_key' => $rate_key,
+                                        'count'    => 1,
+                                        'reset_at' => $new_reset_at,
+                                );
+                                $this->tables[ $table ][] = $row;
+                                $this->insert_id = $row['id'];
+                                $this->rows_affected = 1;
+                                return 1;
+                        }
+
+                        $existing = $this->tables[ $table ][ $existing_index ];
+                        if ( (string) ( $existing['reset_at'] ?? '' ) <= $now ) {
+                                $this->tables[ $table ][ $existing_index ]['count']    = 1;
+                                $this->tables[ $table ][ $existing_index ]['reset_at'] = $new_reset_at;
+                        } else {
+                                $this->tables[ $table ][ $existing_index ]['count'] = (int) ( $existing['count'] ?? 0 ) + 1;
+                        }
+                        $this->rows_affected = 1;
+                        $this->insert_id     = 0;
+                        return 1;
+                }
+
                 // INSERT parsing for our repository inserts.
                 if ( preg_match( '/insert\s+into\s+`?wp_([a-z_]+)`?\s*\(([^)]+)\)\s*values\s*\((.+)\)/is', $sql, $m ) ) {
                         $table = $m[1];

@@ -442,7 +442,8 @@ final class ToolExecutorTest extends TestCase {
         }
 
         public function test_rate_limiter_blocks_flood(): void {
-                $limiter = new \AIOS\Security\RateLimiter( 3, 60 );
+                $repository = Plugin::instance()->container()->get( \AIOS\Database\Repositories\RateLimitRepository::class );
+                $limiter    = new \AIOS\Security\RateLimiter( $repository, 3, 60 );
 
                 $this->assertTrue( $limiter->allow( 'user:1', 'test' ) );
                 $this->assertTrue( $limiter->allow( 'user:1', 'test' ) );

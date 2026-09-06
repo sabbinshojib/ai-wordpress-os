@@ -41,7 +41,11 @@ function ai_os_uninstall_current_site(): void {
 	delete_transient( 'ai_os_environment_warnings' );
 	wp_clear_scheduled_hook( 'ai_os_daily_maintenance' );
 
-	// Rate limiter transients (hash-keyed: delete by prefix scan).
+	// Legacy rate-limiter transients (Sprint 0.1 and earlier stored
+	// rate limits as transients, hash-keyed; Sprint 0.3A moved this to
+	// the ai_os_rate_limits table, cleaned up below with the other
+	// tables). Kept here so a site upgrading from that era still gets
+	// its stale transients cleaned up on uninstall.
 	$ai_os_rl = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$wpdb->prepare(
 			"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
@@ -65,6 +69,7 @@ function ai_os_uninstall_current_site(): void {
 		$wpdb->prefix . 'ai_os_tool_executions',
 		$wpdb->prefix . 'ai_os_approvals',
 		$wpdb->prefix . 'ai_os_api_keys',
+		$wpdb->prefix . 'ai_os_rate_limits',
 	);
 
 	foreach ( $ai_os_tables as $ai_os_table ) {

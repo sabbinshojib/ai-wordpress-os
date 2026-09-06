@@ -28,20 +28,20 @@ final class DatabaseTest extends TestCase {
                 $this->assert( $migrator->isUpToDate(), 'fresh state should be pending or applied consistently' );
         }
 
-        public function test_migration_generates_all_four_tables(): void {
+        public function test_migration_generates_all_tables(): void {
                 update_option( 'ai_os_migrations', array() );
                 $db       = new Database();
                 $migrator = new Migrator();
                 $result   = $migrator->migrate( $db );
 
                 $this->assert( null === $result['failed'], 'migration must not fail: ' . wp_json_encode( $result['failed'] ) );
-                $this->assertEquals( array( '202501010001' ), $result['applied'] );
-                $this->assertEquals( array( '202501010001' ), $migrator->appliedVersions() );
+                $this->assertEquals( array( '202501010001', '202509060001' ), $result['applied'] );
+                $this->assertEquals( array( '202501010001', '202509060001' ), $migrator->appliedVersions() );
                 $this->assertTrue( $migrator->isUpToDate() );
         }
 
         public function test_migration_is_idempotent(): void {
-                update_option( 'ai_os_migrations', array( '202501010001' ) );
+                update_option( 'ai_os_migrations', array( '202501010001', '202509060001' ) );
                 $migrator = new Migrator();
                 $result   = $migrator->migrate( new Database() );
                 $this->assertEquals( array(), $result['applied'], 'second run must be a no-op' );

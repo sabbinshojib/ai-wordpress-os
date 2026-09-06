@@ -18,6 +18,7 @@ final class Database {
         public const TABLE_TOOL_EXECUTIONS = 'tool_executions';
         public const TABLE_APPROVALS       = 'approvals';
         public const TABLE_API_KEYS        = 'api_keys';
+        public const TABLE_RATE_LIMITS     = 'rate_limits';
 
         /**
          * Canonical table list (migration + uninstall reference).
@@ -29,6 +30,7 @@ final class Database {
                 self::TABLE_TOOL_EXECUTIONS,
                 self::TABLE_APPROVALS,
                 self::TABLE_API_KEYS,
+                self::TABLE_RATE_LIMITS,
         );
 
         /**

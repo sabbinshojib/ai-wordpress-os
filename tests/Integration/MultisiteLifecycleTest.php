@@ -63,8 +63,9 @@ final class MultisiteLifecycleTest extends TestCase {
                 $this->assertTrue( in_array( 'wp_2_ai_os_audit_logs', $created, true ), 'blog 2 must be provisioned' );
                 $this->assertTrue( in_array( 'wp_3_ai_os_audit_logs', $created, true ), 'blog 3 must be provisioned' );
 
-                // All four tables, for all three sites.
-                $this->assertCount( 12, array_unique( $created ) );
+                // All five tables (audit_logs, tool_executions, approvals,
+                // api_keys, rate_limits), for all three sites.
+                $this->assertCount( 15, array_unique( $created ) );
         }
 
         /**
@@ -77,15 +78,15 @@ final class MultisiteLifecycleTest extends TestCase {
                 ( new Activator() )->activate( true );
 
                 switch_to_blog( 1 );
-                $this->assertEquals( array( '202501010001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
 
                 switch_to_blog( 2 );
-                $this->assertEquals( array( '202501010001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
 
                 switch_to_blog( 3 );
-                $this->assertEquals( array( '202501010001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
         }
 

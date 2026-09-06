@@ -180,7 +180,7 @@ abstract class TestCase {
                 // stays correct regardless of the shim's internal storage
                 // shape — e.g. options became blog-scoped for BUG-005.
                 update_option( 'ai_os_settings', array() );
-                update_option( 'ai_os_migrations', array( '202501010001' ) );
+                update_option( 'ai_os_migrations', array( '202501010001', '202509060001' ) );
 
                 // Rebuild the kernel for full isolation.
                 $property = new \ReflectionProperty( \AIOS\Core\Plugin::class, 'instance' );

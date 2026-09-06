@@ -18,6 +18,7 @@ use AIOS\Database\Migrator;
 use AIOS\Database\Repositories\ApiKeyRepository;
 use AIOS\Database\Repositories\ApprovalRepository;
 use AIOS\Database\Repositories\AuditLogRepository;
+use AIOS\Database\Repositories\RateLimitRepository;
 use AIOS\Database\Repositories\ToolExecutionRepository;
 use AIOS\Mcp\Protocol\JsonRpcRequest;
 use AIOS\Mcp\Server;
@@ -73,12 +74,13 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		$container->bind( ToolExecutionRepository::class, static fn( Container $c ): ToolExecutionRepository => new ToolExecutionRepository( $c->get( Database::class ) ) );
 		$container->bind( ApprovalRepository::class, static fn( Container $c ): ApprovalRepository => new ApprovalRepository( $c->get( Database::class ) ) );
 		$container->bind( ApiKeyRepository::class, static fn( Container $c ): ApiKeyRepository => new ApiKeyRepository( $c->get( Database::class ) ) );
+		$container->bind( RateLimitRepository::class, static fn( Container $c ): RateLimitRepository => new RateLimitRepository( $c->get( Database::class ) ) );
 		$container->bind( Migrator::class, static fn(): Migrator => new Migrator() );
 
 		// Security.
 		$container->bind( PermissionEngine::class, static fn( Container $c ): PermissionEngine => new PermissionEngine( $c->get( Settings::class ) ) );
 		$container->bind( ApiKeyManager::class, static fn( Container $c ): ApiKeyManager => new ApiKeyManager( $c->get( ApiKeyRepository::class ) ) );
-		$container->bind( RateLimiter::class, static fn(): RateLimiter => new RateLimiter() );
+		$container->bind( RateLimiter::class, static fn( Container $c ): RateLimiter => new RateLimiter( $c->get( RateLimitRepository::class ) ) );
 
 		// Audit.
 		$container->bind( AuditLogger::class, static fn( Container $c ): AuditLogger => new AuditLogger( $c->get( AuditLogRepository::class ), $c->get( Settings::class ) ) );
@@ -197,5 +199,9 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		/** @var ToolExecutionRepository $execs */
 		$execs = $container->get( ToolExecutionRepository::class );
 		$execs->purgeOlderThan( max( 7, $days ) );
+
+		/** @var RateLimitRepository $rate_limits */
+		$rate_limits = $container->get( RateLimitRepository::class );
+		$rate_limits->purgeExpired();
 	}
 }
