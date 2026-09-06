@@ -1,0 +1,33 @@
+{
+	"name": "ai-wordpress-os/ai-wordpress-os",
+	"description": "An AI-native operating system for WordPress: MCP server, permission engine, approval queue, audit trail and tool catalog.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"authors": [
+		{
+			"name": "AI WordPress OS"
+		}
+	],
+	"require": {
+		"php": ">=8.2",
+		"composer/installers": "^2.2"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^10.5"
+	},
+	"autoload": {
+		"psr-4": {
+			"AIOS\\": "src/"
+		}
+	},
+	"scripts": {
+		"test": "php tests/run.php",
+		"acceptance": "php tests/acceptance.php",
+		"lint": "find . -name '*.php' -not -path './build/dashboard-src/node_modules/*' -exec php -l {} +"
+	},
+	"config": {
+		"allow-plugins": {
+			"composer/installers": true
+		}
+	}
+}

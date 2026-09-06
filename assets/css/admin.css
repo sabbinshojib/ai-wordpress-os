@@ -1,0 +1,441 @@
+/*
+ * AI WordPress OS — admin console theme.
+ * A dark, professional developer-console surface (spec §34).
+ * Scope: .ai-os-root / .aios-* classes only — no WP admin overrides.
+ */
+
+.ai-os-wrap { margin: 0 0 0 -20px; }
+.ai-os-screen-reader { position: absolute; left: -9999px; }
+
+.aios-app {
+	display: flex;
+	min-height: calc(100vh - 32px);
+	background: #0b0f14;
+	color: #d5dde5;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* ------------------------------------------------------------- sidebar */
+
+.aios-sidebar {
+	width: 236px;
+	flex: 0 0 236px;
+	background: #0d1218;
+	border-right: 1px solid #1c242e;
+	display: flex;
+	flex-direction: column;
+}
+
+.aios-brand {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	padding: 18px 16px 14px;
+	border-bottom: 1px solid #1c242e;
+}
+
+.aios-brand-mark {
+	width: 34px;
+	height: 34px;
+	border-radius: 8px;
+	background: linear-gradient(135deg, #4f7cff, #8a5cff);
+	color: #fff;
+	font-weight: 800;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 13px;
+	letter-spacing: .5px;
+}
+
+.aios-brand-name { font-weight: 700; font-size: 13px; color: #fff; }
+.aios-brand-sub { font-size: 10px; color: #5c6a79; margin-top: 1px; }
+
+.aios-nav { padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+
+.aios-nav-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border: 0;
+	background: transparent;
+	color: #9fb0c0;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 13px;
+	text-align: left;
+	width: 100%;
+	transition: background .12s ease, color .12s ease;
+}
+
+.aios-nav-item:hover { background: #131b23; color: #e4ecf4; }
+.aios-nav-item.active { background: #16202b; color: #fff; box-shadow: inset 2px 0 0 #4f7cff; }
+.aios-nav-icon { width: 16px; text-align: center; opacity: .8; }
+
+.aios-nav-badge {
+	margin-left: auto;
+	background: #d63638;
+	color: #fff;
+	border-radius: 9px;
+	min-width: 18px;
+	height: 18px;
+	font-size: 10px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 5px;
+}
+
+.aios-sidebar-foot {
+	margin-top: auto;
+	padding: 14px 16px;
+	font-size: 11px;
+	color: #5c6a79;
+	border-top: 1px solid #1c242e;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.aios-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.aios-dot.ok { background: #3fb950; }
+.aios-dot.warn { background: #d29922; }
+.aios-dot.danger { background: #f85149; }
+
+/* ---------------------------------------------------------------- main */
+
+.aios-main { flex: 1; overflow: auto; padding: 22px 26px 40px; max-width: 1280px; }
+
+.aios-section-head {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 18px;
+}
+
+.aios-section-head h2 { color: #fff; font-size: 19px; font-weight: 700; margin: 0 0 2px; }
+.aios-section-head-actions { display: flex; gap: 8px; align-items: center; }
+
+.aios-muted { color: #748390; font-size: 12px; margin: 0; }
+.aios-note { margin-top: 8px; }
+.aios-mono { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace; font-size: 12px; }
+
+/* ---------------------------------------------------------------- cards */
+
+.aios-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+	gap: 10px;
+	margin-bottom: 18px;
+}
+
+.aios-stat {
+	background: #111823;
+	border: 1px solid #1c242e;
+	border-radius: 8px;
+	padding: 12px 14px;
+}
+
+.aios-stat-label { font-size: 11px; color: #748390; text-transform: uppercase; letter-spacing: .04em; }
+.aios-stat-value { font-size: 22px; font-weight: 700; margin-top: 4px; color: #e4ecf4; }
+.aios-stat-sub { font-size: 11px; color: #748390; margin-top: 2px; }
+
+.aios-stat-ok .aios-stat-value { color: #3fb950; }
+.aios-stat-warn .aios-stat-value { color: #d29922; }
+.aios-stat-danger .aios-stat-value { color: #f85149; }
+.aios-stat-info .aios-stat-value { color: #58a6ff; }
+
+/* --------------------------------------------------------------- panels */
+
+.aios-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+@media (max-width: 1100px) { .aios-grid-2 { grid-template-columns: 1fr; } }
+
+.aios-panel {
+	background: #111823;
+	border: 1px solid #1c242e;
+	border-radius: 8px;
+	padding: 14px 16px 16px;
+}
+
+.aios-panel-title {
+	font-size: 12px;
+	color: #748390;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	margin: 0 0 12px;
+	font-weight: 700;
+}
+
+.aios-subhead { color: #cbd5e0; font-size: 12px; margin: 14px 0 6px; }
+
+.aios-kv { display: flex; flex-direction: column; gap: 6px; }
+.aios-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #18202a; }
+.aios-row:last-child { border-bottom: 0; }
+.aios-row-k { color: #748390; font-size: 12px; white-space: nowrap; }
+.aios-row-v { color: #d5dde5; font-size: 12px; text-align: right; word-break: break-all; }
+
+.aios-code-inline {
+	background: #0b0f14;
+	border: 1px solid #1c242e;
+	border-radius: 4px;
+	padding: 1px 6px;
+	font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	font-size: 11px;
+	color: #79c0ff;
+}
+
+/* --------------------------------------------------------------- tables */
+
+.aios-table { width: 100%; border-collapse: collapse; }
+.aios-table th {
+	text-align: left;
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	color: #5c6a79;
+	padding: 6px 8px;
+	border-bottom: 1px solid #1c242e;
+	font-weight: 700;
+}
+.aios-table td { padding: 7px 8px; border-bottom: 1px solid #18202a; font-size: 12px; color: #c2ccd6; vertical-align: top; }
+.aios-table tr:last-child td { border-bottom: 0; }
+.aios-row-error td, .aios-row-blocked td { background: rgba(248, 81, 73, .05); }
+.aios-row-revoked td { opacity: .45; }
+.aios-err-cell { color: #f85149; max-width: 260px; }
+
+/* ---------------------------------------------------------------- chips */
+
+.aios-chip {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 10px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: .03em;
+}
+.aios-chip.ok { background: rgba(63, 185, 80, .12); color: #3fb950; }
+.aios-chip.info { background: rgba(88, 166, 255, .12); color: #58a6ff; }
+.aios-chip.warn { background: rgba(210, 153, 34, .14); color: #d29922; }
+.aios-chip.danger { background: rgba(248, 81, 73, .14); color: #f85149; }
+
+.aios-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.aios-tag {
+	background: #0b0f14;
+	border: 1px solid #1c242e;
+	border-radius: 4px;
+	padding: 2px 7px;
+	font-size: 11px;
+	color: #9fb0c0;
+}
+.aios-tag.warn { border-color: #6e5518; color: #d29922; }
+.aios-tag.danger { border-color: #6b2f2c; color: #f85149; }
+
+/* ----------------------------------------------------------- tool cards */
+
+.aios-grid-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+	gap: 10px;
+}
+
+.aios-tool-card {
+	background: #111823;
+	border: 1px solid #1c242e;
+	border-radius: 8px;
+	padding: 12px 14px;
+}
+
+.aios-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.aios-tool-name { color: #79c0ff; font-weight: 600; }
+.aios-tool-desc { color: #9fb0c0; font-size: 12px; margin: 8px 0 10px; }
+.aios-tool-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ------------------------------------------------------------ approvals */
+
+.aios-approval-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+
+.aios-approval-card {
+	background: #111823;
+	border: 1px solid #2d2a18;
+	border-left: 3px solid #d29922;
+	border-radius: 8px;
+	padding: 14px 16px;
+}
+
+.aios-approval-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aios-approval-reason { color: #cbd5e0; font-size: 12px; margin: 8px 0; }
+
+.aios-approval-args summary { cursor: pointer; color: #58a6ff; font-size: 11px; }
+.aios-approval-args .aios-pre { margin-top: 8px; max-height: 240px; }
+
+.aios-approval-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* --------------------------------------------------------------- inputs */
+
+.aios-toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+
+.aios-input, .aios-select {
+	background: #0b0f14;
+	border: 1px solid #263140;
+	color: #d5dde5;
+	border-radius: 6px;
+	padding: 7px 10px;
+	font-size: 12px;
+	min-width: 0;
+}
+.aios-input { flex: 1; }
+.aios-input:focus, .aios-select:focus { outline: 1px solid #4f7cff; border-color: #4f7cff; }
+.aios-select option { background: #0b0f14; }
+
+.aios-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.aios-field-label { font-size: 11px; color: #748390; text-transform: uppercase; letter-spacing: .04em; }
+
+.aios-toggle {
+	width: 40px;
+	height: 22px;
+	border-radius: 11px;
+	background: #1c242e;
+	border: 1px solid #263140;
+	position: relative;
+	cursor: pointer;
+	transition: background .15s ease;
+}
+.aios-toggle .aios-toggle-knob {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #748390;
+	transition: left .15s ease, background .15s ease;
+}
+.aios-toggle.on { background: #1f4d2a; border-color: #2f7a41; }
+.aios-toggle.on .aios-toggle-knob { left: 20px; background: #3fb950; }
+
+/* -------------------------------------------------------------- buttons */
+
+.aios-btn {
+	background: #1a2430;
+	border: 1px solid #2b3a4d;
+	color: #d5dde5;
+	border-radius: 6px;
+	padding: 7px 14px;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background .12s ease;
+}
+.aios-btn:hover { background: #223041; }
+.aios-btn:disabled { opacity: .5; cursor: default; }
+.aios-btn.primary { background: #23417e; border-color: #2f5cb8; color: #fff; }
+.aios-btn.primary:hover { background: #2a4f96; }
+.aios-btn.danger { background: #4a1f1d; border-color: #7a2d29; color: #ffb3ae; }
+.aios-btn.danger:hover { background: #5c2623; }
+.aios-btn.small { padding: 4px 10px; font-size: 11px; }
+
+.aios-actions { display: flex; gap: 10px; margin-top: 6px; }
+
+/* --------------------------------------------------------------- states */
+
+.aios-loading { display: flex; align-items: center; gap: 10px; color: #748390; padding: 40px 0; }
+
+.aios-spinner {
+	width: 16px;
+	height: 16px;
+	border: 2px solid #263140;
+	border-top-color: #4f7cff;
+	border-radius: 50%;
+	animation: aios-spin .8s linear infinite;
+}
+@keyframes aios-spin { to { transform: rotate(360deg); } }
+
+.aios-error-box {
+	background: #2d1416;
+	border: 1px solid #7a2d29;
+	border-radius: 8px;
+	color: #ffb3ae;
+	padding: 14px 16px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.aios-error-text { color: #f85149; font-size: 12px; margin: 8px 0; }
+
+.aios-toast {
+	background: #12261a;
+	border: 1px solid #2f7a41;
+	border-radius: 8px;
+	color: #7ee2a8;
+	padding: 10px 14px;
+	margin-bottom: 14px;
+	font-size: 12px;
+}
+
+.aios-empty {
+	background: #111823;
+	border: 1px dashed #263140;
+	border-radius: 8px;
+	padding: 34px 20px;
+	text-align: center;
+}
+.aios-empty h3 { color: #cbd5e0; margin: 0 0 6px; font-size: 14px; }
+
+.aios-pre {
+	background: #0b0f14;
+	border: 1px solid #1c242e;
+	border-radius: 6px;
+	color: #9fb0c0;
+	padding: 10px 12px;
+	overflow: auto;
+	font-size: 11px;
+	font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	margin: 8px 0;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.aios-key-reveal {
+	background: #0b0f14;
+	border: 1px solid #2f7a41;
+	border-radius: 8px;
+	padding: 12px 14px;
+	margin-bottom: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 12px;
+	color: #7ee2a8;
+}
+
+.aios-key-code {
+	display: block;
+	font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	font-size: 14px;
+	color: #d5dde5;
+	background: #111823;
+	border-radius: 4px;
+	padding: 8px 10px;
+	word-break: break-all;
+	user-select: all;
+}
+
+.aios-key-form { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.aios-key-form .aios-input { flex: 1 1 160px; }
+.aios-input-num { width: 90px; flex: 0 0 90px; }
+
+/* ----------------------------------------------------------- responsive */
+
+@media (max-width: 960px) {
+	.aios-app { flex-direction: column; }
+	.aios-sidebar { width: 100%; flex: none; flex-direction: row; align-items: center; overflow-x: auto; }
+	.aios-brand { border-bottom: 0; border-right: 1px solid #1c242e; }
+	.aios-nav { flex-direction: row; }
+	.aios-sidebar-foot { display: none; }
+}

@@ -1,0 +1,195 @@
+<?php
+/**
+ * Core service provider: binds every subsystem and hooks the
+ * context-aware bootstrapping.
+ *
+ * @package AIOS\Core
+ */
+
+declare( strict_types=1 );
+
+namespace AIOS\Core;
+
+use AIOS\Abilities\AbilityRegistry;
+use AIOS\Audit\AuditLogger;
+use AIOS\Context\ContextEngine;
+use AIOS\Database\Database;
+use AIOS\Database\Migrator;
+use AIOS\Database\Repositories\ApiKeyRepository;
+use AIOS\Database\Repositories\ApprovalRepository;
+use AIOS\Database\Repositories\AuditLogRepository;
+use AIOS\Database\Repositories\ToolExecutionRepository;
+use AIOS\Mcp\Protocol\JsonRpcRequest;
+use AIOS\Mcp\Server;
+use AIOS\Mcp\Transports\RestTransport;
+use AIOS\Rest\Controllers\ToolsController;
+use AIOS\Rest\RestApi;
+use AIOS\Security\ApiKeyManager;
+use AIOS\Security\Authenticator;
+use AIOS\Security\PermissionEngine;
+use AIOS\Security\RateLimiter;
+use AIOS\Settings\Settings;
+use AIOS\Tools\Catalog\CatalogProviderInterface;
+use AIOS\Tools\Catalog\ContextTools;
+use AIOS\Tools\Catalog\ContentTools;
+use AIOS\Tools\Catalog\LogTools;
+use AIOS\Tools\Catalog\MediaTools;
+use AIOS\Tools\Catalog\MenuTools;
+use AIOS\Tools\Catalog\PluginTools;
+use AIOS\Tools\Catalog\SiteTools;
+use AIOS\Tools\Catalog\SystemTools;
+use AIOS\Tools\Catalog\ThemeTools;
+use AIOS\Tools\Catalog\UserTools;
+use AIOS\Tools\ToolExecutor;
+use AIOS\Tools\ToolRegistry;
+
+final class CoreServiceProvider implements ServiceProviderInterface {
+
+	/**
+	 * Catalog providers, in registration order.
+	 *
+	 * @var array<int, class-string<CatalogProviderInterface>>
+	 */
+	private const CATALOG = array(
+		SiteTools::class,
+		ContentTools::class,
+		MediaTools::class,
+		ThemeTools::class,
+		PluginTools::class,
+		UserTools::class,
+		MenuTools::class,
+		SystemTools::class,
+		LogTools::class,
+		ContextTools::class,
+	);
+
+	public function register( Container $container ): void {
+		// Settings (bound first; many services depend on it).
+		$container->bind( Settings::class, static fn(): Settings => new Settings() );
+
+		// Database + repositories.
+		$container->bind( Database::class, static fn(): Database => new Database() );
+		$container->bind( AuditLogRepository::class, static fn( Container $c ): AuditLogRepository => new AuditLogRepository( $c->get( Database::class ) ) );
+		$container->bind( ToolExecutionRepository::class, static fn( Container $c ): ToolExecutionRepository => new ToolExecutionRepository( $c->get( Database::class ) ) );
+		$container->bind( ApprovalRepository::class, static fn( Container $c ): ApprovalRepository => new ApprovalRepository( $c->get( Database::class ) ) );
+		$container->bind( ApiKeyRepository::class, static fn( Container $c ): ApiKeyRepository => new ApiKeyRepository( $c->get( Database::class ) ) );
+		$container->bind( Migrator::class, static fn(): Migrator => new Migrator() );
+
+		// Security.
+		$container->bind( PermissionEngine::class, static fn( Container $c ): PermissionEngine => new PermissionEngine( $c->get( Settings::class ) ) );
+		$container->bind( ApiKeyManager::class, static fn( Container $c ): ApiKeyManager => new ApiKeyManager( $c->get( ApiKeyRepository::class ) ) );
+		$container->bind( RateLimiter::class, static fn(): RateLimiter => new RateLimiter() );
+
+		// Audit.
+		$container->bind( AuditLogger::class, static fn( Container $c ): AuditLogger => new AuditLogger( $c->get( AuditLogRepository::class ), $c->get( Settings::class ) ) );
+
+		// Registries.
+		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );
+		$container->bind( ToolRegistry::class, static fn(): ToolRegistry => new ToolRegistry() );
+
+		// Execution pipeline.
+		$container->bind(
+			ToolExecutor::class,
+			static fn( Container $c ): ToolExecutor => new ToolExecutor(
+				$c->get( ToolRegistry::class ),
+				$c->get( AbilityRegistry::class ),
+				$c->get( PermissionEngine::class ),
+				$c->get( AuditLogger::class ),
+				$c->get( ToolExecutionRepository::class ),
+				$c->get( ApprovalRepository::class ),
+				$c->get( Settings::class ),
+				$c->get( RateLimiter::class )
+			)
+		);
+
+		// Context.
+		$container->bind( ContextEngine::class, static fn( Container $c ): ContextEngine => new ContextEngine( $c->get( Settings::class ) ) );
+
+		// MCP.
+		$container->bind(
+			Server::class,
+			static fn( Container $c ): Server => new Server(
+				$c->get( ToolRegistry::class ),
+				$c->get( ToolExecutor::class ),
+				$c->get( Settings::class ),
+				$c->get( PermissionEngine::class )
+			)
+		);
+		$container->bind(
+			RestTransport::class,
+			static fn( Container $c ): RestTransport => new RestTransport(
+				$c->get( Server::class ),
+				$c->get( Settings::class ),
+				$c->get( ToolExecutor::class )
+			)
+		);
+
+		/**
+		 * Filter: integrations may REPLACE core services after
+		 * registration (e.g. a decorated PermissionEngine). The
+		 * container is still mutable at this point.
+		 */
+		do_action( 'ai_os_container_build', $container );
+	}
+
+	public function boot( Container $container ): void {
+		$abilities = $container->get( AbilityRegistry::class );
+		$tools     = $container->get( ToolRegistry::class );
+
+		// Core catalog (always registers; availability conditions are
+		// evaluated lazily per request).
+		foreach ( self::CATALOG as $provider ) {
+			$provider::register( $abilities, $tools );
+		}
+
+		// Seal registries with third-party filters.
+		$abilities->boot();
+		$tools->boot();
+
+		// REST API (includes the MCP transport route).
+		if ( ( $rest = $container->get( RestApi::class ) ) instanceof RestApi ) {
+			$rest->hook();
+		}
+
+		// Context cache invalidation hooks.
+		ContextEngine::hookInvalidation();
+
+		// Admin UI (admin context only).
+		if ( is_admin() ) {
+			( new \AIOS\Admin\AdminPages( $container ) )->hook();
+		}
+
+		// WP-CLI commands (CLI context only).
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			\AIOS\Cli\CliCommands::register();
+		}
+
+		// Maintenance cron.
+		add_action( 'ai_os_daily_maintenance', array( $this, 'runMaintenance' ) );
+		if ( ! wp_next_scheduled( 'ai_os_daily_maintenance' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'ai_os_daily_maintenance' );
+		}
+	}
+
+	/**
+	 * Daily maintenance: audit retention purge + execution stats purge.
+	 */
+	public function runMaintenance(): void {
+		$container = Plugin::instance()?->container();
+		if ( null === $container ) {
+			return;
+		}
+
+		/** @var Settings $settings */
+		$settings = $container->get( Settings::class );
+		$days     = $settings->auditRetentionDays();
+
+		/** @var AuditLogRepository $logs */
+		$logs = $container->get( AuditLogRepository::class );
+		$logs->purgeOlderThan( $days );
+
+		/** @var ToolExecutionRepository $execs */
+		$execs = $container->get( ToolExecutionRepository::class );
+		$execs->purgeOlderThan( max( 7, $days ) );
+	}
+}
