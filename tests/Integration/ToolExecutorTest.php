@@ -56,6 +56,73 @@ final class ToolExecutorTest extends TestCase {
                 }
         }
 
+        /**
+         * BUG-002 regression: every real, registered tool name must
+         * conform to the canonical grammar (Tool::NAME_PATTERN) AND must
+         * survive REST identifier sanitization completely unchanged in
+         * meaning — proving the fixed /tools/execute sanitize_callback
+         * cannot mangle any of the 31 tools the catalog actually ships.
+         */
+        public function test_all_registered_tools_survive_rest_identifier_sanitization(): void {
+                $tools      = Plugin::instance()->container()->get( \AIOS\Tools\ToolRegistry::class );
+                $controller = new \AIOS\Rest\Controllers\ToolsController( Plugin::instance()->container() );
+
+                $this->assertGreaterThan( 0, $tools->count(), 'the catalog must have registered tools to check' );
+
+                foreach ( $tools->all() as $tool ) {
+                        $name = $tool->name();
+
+                        $this->assertEquals(
+                                1,
+                                preg_match( \AIOS\Tools\Tool::NAME_PATTERN, $name ),
+                                "registered tool [{$name}] must match the canonical dot-notation grammar"
+                        );
+
+                        $this->assertTrue(
+                                $controller->validateToolIdentifier( $name ),
+                                "registered tool [{$name}] must pass REST validation unchanged"
+                        );
+
+                        $sanitized = $controller->sanitizeToolIdentifier( $name );
+                        $this->assertEquals(
+                                $name,
+                                $sanitized,
+                                "registered tool [{$name}] must be a no-op under sanitization (already canonical lowercase)"
+                        );
+
+                        // The sanitized identifier must still resolve to the
+                        // SAME tool in the registry — the entire point of
+                        // BUG-002.
+                        $this->assertSame( $tool, $tools->get( $sanitized ) );
+                }
+        }
+
+        /**
+         * BUG-002 regression: every registered tool must remain
+         * discoverable and invokable through the executor pipeline using
+         * its REST-sanitized identifier. A tool may still fail with a
+         * validation or permission error (missing required arguments,
+         * insufficient capability) — that is expected and correct — but
+         * it must never fail with "tool.unknown" or "tool.ability_missing",
+         * which is exactly the failure mode the sanitize_key() defect
+         * produced for every tool, unconditionally.
+         */
+        public function test_every_registered_tool_is_discoverable_and_invokable_after_sanitization(): void {
+                $tools      = Plugin::instance()->container()->get( \AIOS\Tools\ToolRegistry::class );
+                $controller = new \AIOS\Rest\Controllers\ToolsController( Plugin::instance()->container() );
+
+                foreach ( $tools->all() as $tool ) {
+                        $sanitized = $controller->sanitizeToolIdentifier( $tool->name() );
+                        $result    = $this->executor()->execute( $sanitized, array(), $this->adminUser(), 'test' );
+
+                        if ( $result->isError() ) {
+                                $code = $result->error()?->code();
+                                $this->assertNotEquals( 'tool.unknown', $code, "tool [{$tool->name()}] must be discoverable after sanitization" );
+                                $this->assertNotEquals( 'tool.ability_missing', $code, "tool [{$tool->name()}] must resolve its ability after sanitization" );
+                        }
+                }
+        }
+
         public function test_unknown_tool_is_structured_not_found(): void {
                 $result = $this->executor()->execute( 'does.not_exist', array(), $this->adminUser(), 'test' );
                 $this->assertTrue( $result->isError() );

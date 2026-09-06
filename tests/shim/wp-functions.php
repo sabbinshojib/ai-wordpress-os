@@ -292,9 +292,15 @@ function add_action_stub(): void {}
 class WP_Error {
         private array $errors = array();
 
-        public function __construct( string $code = '', string $message = '' ) {
+        /** @var array<string, mixed> */
+        private array $error_data = array();
+
+        public function __construct( string $code = '', string $message = '', mixed $data = '' ) {
                 if ( '' !== $code ) {
                         $this->errors[ $code ] = $message;
+                        if ( '' !== $data ) {
+                                $this->error_data[ $code ] = $data;
+                        }
                 }
         }
 
@@ -308,6 +314,16 @@ class WP_Error {
                         return $first === null ? '' : (string) $this->errors[ $first ];
                 }
                 return (string) ( $this->errors[ $code ] ?? '' );
+        }
+
+        /**
+         * @return mixed
+         */
+        public function get_error_data( string $code = '' ) {
+                if ( '' === $code ) {
+                        $code = (string) array_key_first( $this->errors );
+                }
+                return $this->error_data[ $code ] ?? null;
         }
 }
 

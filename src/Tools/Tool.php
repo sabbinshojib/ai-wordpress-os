@@ -40,6 +40,21 @@ final class Tool {
 	public const CONFIRM_NEVER    = 'never';
 	public const CONFIRM_APPROVAL = 'approval';
 
+	/**
+	 * Canonical tool-name grammar: dot-notation, e.g. "content.create_post".
+	 * At least one dot is required (category.action); segments are
+	 * lowercase-or-uppercase letters, digits, and underscores, the first
+	 * character of the whole name must be a letter. This is the single
+	 * source of truth for what a valid tool identifier looks like —
+	 * every layer that accepts a tool name from outside the process
+	 * (REST, MCP, WP-CLI) must validate against exactly this pattern
+	 * rather than re-deriving its own notion of "safe" (see
+	 * docs/audits/BUG-GAP-REGISTER.md BUG-002: a REST sanitize callback
+	 * that used a different, incompatible notion of "safe" silently
+	 * stripped the dot every real tool name requires).
+	 */
+	public const NAME_PATTERN = '/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/i';
+
 	private string $name;
 	private string $description;
 	private string $category;
@@ -88,7 +103,7 @@ final class Tool {
 	 */
 	public static function make( array $definition ): self {
 		$name = (string) ( $definition['name'] ?? '' );
-		if ( '' === $name || ! preg_match( '/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/i', $name ) ) {
+		if ( '' === $name || ! preg_match( self::NAME_PATTERN, $name ) ) {
 			throw new \InvalidArgumentException( "Invalid tool name [{$name}]. Use dot notation, e.g. content.create_post." );
 		}
 
