@@ -21,6 +21,7 @@ final class Migrator {
         private array $migration_classes = array(
                 Schema\Migration_202501010001_CoreTables::class,
                 Schema\Migration_202509060001_RateLimits::class,
+                Schema\Migration_202509060002_AuditIntegrity::class,
         );
 
         /**

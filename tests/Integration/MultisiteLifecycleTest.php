@@ -78,15 +78,15 @@ final class MultisiteLifecycleTest extends TestCase {
                 ( new Activator() )->activate( true );
 
                 switch_to_blog( 1 );
-                $this->assertEquals( array( '202501010001', '202509060001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001', '202509060002' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
 
                 switch_to_blog( 2 );
-                $this->assertEquals( array( '202501010001', '202509060001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001', '202509060002' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
 
                 switch_to_blog( 3 );
-                $this->assertEquals( array( '202501010001', '202509060001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001', '202509060002' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
         }
 

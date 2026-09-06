@@ -11,6 +11,7 @@ declare( strict_types=1 );
 namespace AIOS\Core;
 
 use AIOS\Abilities\AbilityRegistry;
+use AIOS\Audit\AuditIntegrity;
 use AIOS\Audit\AuditLogger;
 use AIOS\Context\ContextEngine;
 use AIOS\Database\Database;
@@ -70,7 +71,8 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 
 		// Database + repositories.
 		$container->bind( Database::class, static fn(): Database => new Database() );
-		$container->bind( AuditLogRepository::class, static fn( Container $c ): AuditLogRepository => new AuditLogRepository( $c->get( Database::class ) ) );
+		$container->bind( AuditIntegrity::class, static fn(): AuditIntegrity => new AuditIntegrity() );
+		$container->bind( AuditLogRepository::class, static fn( Container $c ): AuditLogRepository => new AuditLogRepository( $c->get( Database::class ), $c->get( AuditIntegrity::class ) ) );
 		$container->bind( ToolExecutionRepository::class, static fn( Container $c ): ToolExecutionRepository => new ToolExecutionRepository( $c->get( Database::class ) ) );
 		$container->bind( ApprovalRepository::class, static fn( Container $c ): ApprovalRepository => new ApprovalRepository( $c->get( Database::class ) ) );
 		$container->bind( ApiKeyRepository::class, static fn( Container $c ): ApiKeyRepository => new ApiKeyRepository( $c->get( Database::class ) ) );
@@ -83,7 +85,7 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		$container->bind( RateLimiter::class, static fn( Container $c ): RateLimiter => new RateLimiter( $c->get( RateLimitRepository::class ) ) );
 
 		// Audit.
-		$container->bind( AuditLogger::class, static fn( Container $c ): AuditLogger => new AuditLogger( $c->get( AuditLogRepository::class ), $c->get( Settings::class ) ) );
+		$container->bind( AuditLogger::class, static fn( Container $c ): AuditLogger => new AuditLogger( $c->get( AuditLogRepository::class ), $c->get( Settings::class ), $c->get( AuditIntegrity::class ) ) );
 
 		// Registries.
 		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );

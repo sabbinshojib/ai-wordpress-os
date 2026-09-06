@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace AIOS\Database\Repositories;
 
+use AIOS\Audit\AuditIntegrity;
 use AIOS\Database\Database;
 use AIOS\Support\Strings;
 
@@ -16,8 +17,11 @@ final class AuditLogRepository {
 
 	private Database $db;
 
-	public function __construct( Database $db ) {
-		$this->db = $db;
+	private AuditIntegrity $integrity;
+
+	public function __construct( Database $db, ?AuditIntegrity $integrity = null ) {
+		$this->db        = $db;
+		$this->integrity = $integrity ?? new AuditIntegrity();
 	}
 
 	private function table(): string {
@@ -59,8 +63,46 @@ final class AuditLogRepository {
 			'ip'               => self::packIp( $entry['ip'] ?? null ),
 		);
 
+		// Tamper-evident chain (SEC-M4): link this row onto whatever
+		// immediately precedes it in this SITE's own table — multisite
+		// isolation is automatic here because every site has its own
+		// physically separate audit_logs table (see Database::table()),
+		// so there is nothing extra to scope by blog id at the SQL
+		// level. siteId is folded into the hash material anyway as a
+		// second, explicit guard against a row computed under one site's
+		// key material ever verifying under another's.
+		$site_id  = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 1;
+		$previous = $this->lastRawRow();
+		$row      = array_merge( $row, $this->integrity->nextLink( AuditIntegrity::contentFieldsFromRow( $row ), $previous, $site_id ) );
+
 		$id = $this->db->insert( $this->table(), $row );
 		return $id ?? 0;
+	}
+
+	/**
+	 * The most recently inserted row, RAW (no hydration) — the exact
+	 * persisted shape integrity linking must chain onto.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function lastRawRow(): ?array {
+		$sql  = 'SELECT * FROM ' . $this->table() . ' ORDER BY id DESC LIMIT 1';
+		$rows = $this->db->getResults( $sql );
+		return $rows[0] ?? null;
+	}
+
+	/**
+	 * RAW rows (no hydration) in chronological (ascending) insertion
+	 * order, for integrity verification — hydrate() json-decodes fields
+	 * that participate in the hash, which would silently desync
+	 * verify-time content from what write time actually hashed.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function chainRows( int $limit = 1000 ): array {
+		$limit = max( 1, min( 5000, $limit ) );
+		$sql   = $this->db->prepare( 'SELECT * FROM ' . $this->table() . ' ORDER BY id DESC LIMIT %d', $limit );
+		return array_reverse( $this->db->getResults( $sql ) );
 	}
 
 	/**
@@ -180,6 +222,8 @@ final class AuditLogRepository {
 		$row['affected_objects'] = null === $row['affected_objects'] ? null : json_decode( (string) $row['affected_objects'], true );
 		$row['affected_files']   = null === $row['affected_files'] ? null : json_decode( (string) $row['affected_files'], true );
 		$row['args_decoded']  = null === $row['args_json'] ? null : json_decode( (string) $row['args_json'], true );
+		$row['integrity_version'] = isset( $row['integrity_version'] ) && null !== $row['integrity_version'] ? (int) $row['integrity_version'] : null;
+		$row['chain_seq']         = isset( $row['chain_seq'] ) && null !== $row['chain_seq'] ? (int) $row['chain_seq'] : null;
 		return $row;
 	}
 

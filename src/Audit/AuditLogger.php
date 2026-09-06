@@ -33,9 +33,12 @@ final class AuditLogger {
 
 	private Settings $settings;
 
-	public function __construct( AuditLogRepository $logs, Settings $settings ) {
-		$this->logs     = $logs;
-		$this->settings = $settings;
+	private AuditIntegrity $integrity;
+
+	public function __construct( AuditLogRepository $logs, Settings $settings, ?AuditIntegrity $integrity = null ) {
+		$this->logs      = $logs;
+		$this->settings  = $settings;
+		$this->integrity = $integrity ?? new AuditIntegrity();
 	}
 
 	/**
@@ -99,5 +102,17 @@ final class AuditLogger {
 	 */
 	public function repository(): AuditLogRepository {
 		return $this->logs;
+	}
+
+	/**
+	 * Verify this site's own audit chain (SEC-M4). See
+	 * AuditIntegrity::verifyChain() for the full status vocabulary —
+	 * this never claims legacy (pre-integrity) rows are "verified".
+	 *
+	 * @return array{overall: string, checked: int, legacy: int, issues: array<int, array{id: mixed, status: string}>}
+	 */
+	public function verifyIntegrity( int $limit = 1000 ): array {
+		$site_id = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 1;
+		return $this->integrity->verifyChain( $this->logs->chainRows( $limit ), $site_id );
 	}
 }
