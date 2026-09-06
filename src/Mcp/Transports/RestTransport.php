@@ -89,6 +89,21 @@ final class RestTransport {
                         );
                 }
 
+                // is_ssl() (WordPress core) checks $_SERVER['HTTPS'] — never
+                // the client-supplied X-Forwarded-Proto/Forwarded headers
+                // directly. On a site behind a reverse proxy or load
+                // balancer that terminates TLS upstream, the SITE OPERATOR
+                // is responsible for bridging that in wp-config.php (the
+                // standard WordPress pattern: check the proxy's own
+                // X-Forwarded-Proto only after confirming REMOTE_ADDR is
+                // that specific, trusted proxy, then set
+                // $_SERVER['HTTPS'] = 'on'). This plugin deliberately does
+                // NOT parse X-Forwarded-Proto/X-Forwarded-Host/Forwarded
+                // itself: unlike wp-config.php, a plugin has no reliable
+                // way to know which upstream hop is the actual trusted
+                // proxy versus the original untrusted client, so doing the
+                // bridging here would let ANY caller spoof those headers
+                // directly. Trust the platform's own boundary instead.
                 if ( $this->settings->requireHttps() && ! is_ssl() && ! $this->isLocalDevelopment() ) {
                         return new WP_Error(
                                 'ai_os_https_required',
@@ -254,15 +269,31 @@ final class RestTransport {
         }
 
         /**
-         * Local development exceptions (localhost / playground hosts).
+         * Local development exception to the HTTPS requirement (spec
+         * Sprint 0.3A-B / SEC-M2).
+         *
+         * Previously inspected `$_SERVER['HTTP_HOST']` for substrings
+         * like "localhost"/".test" — the `Host` header is client-supplied
+         * and, on a misconfigured reverse proxy or a permissive default
+         * virtual host, can be influenced by the very request trying to
+         * downgrade to plaintext HTTP. It is never a valid trust
+         * boundary for a security decision.
+         *
+         * `wp_get_environment_type()` is the WordPress-canonical
+         * replacement: it resolves the `WP_ENVIRONMENT_TYPE` constant
+         * (set only in wp-config.php, which a request can never write
+         * to) or the `wp_get_environment_type` filter (a site-operator
+         * decision, not a per-request one) — never anything derived from
+         * request headers. A request cannot influence this value no
+         * matter what it sends.
          */
         private function isLocalDevelopment(): bool {
-                $host = strtolower( (string) ( $_SERVER['HTTP_HOST'] ?? '' ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-                return '' === $host
-                        || str_contains( $host, 'localhost' )
-                        || str_contains( $host, '127.0.0.1' )
-                        || str_contains( $host, '.local' )
-                        || str_contains( $host, '.test' )
-                        || ( defined( 'WP_ENVIRONMENT_TYPE' ) && 'local' === WP_ENVIRONMENT_TYPE );
+                if ( function_exists( 'wp_get_environment_type' ) ) {
+                        return 'local' === wp_get_environment_type();
+                }
+                // wp_get_environment_type() has existed since WP 5.5; this
+                // plugin requires 6.9+, so a real install always has it.
+                // The constant fallback only matters for the test shim.
+                return defined( 'WP_ENVIRONMENT_TYPE' ) && 'local' === WP_ENVIRONMENT_TYPE;
         }
 }

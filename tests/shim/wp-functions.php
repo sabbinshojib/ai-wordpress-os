@@ -336,7 +336,17 @@ function is_plugin_active_for_network( string $plugin ): bool {
 }
 
 function is_ssl(): bool {
-        return true;
+        return $GLOBALS['__wp_shim']['is_ssl'] ?? true;
+}
+
+/**
+ * Mirrors real WordPress: resolves purely from server-side
+ * configuration (the WP_ENVIRONMENT_TYPE constant, or the
+ * wp_get_environment_type filter) — never from any request header, so
+ * a test can control it without ever touching $_SERVER.
+ */
+function wp_get_environment_type(): string {
+        return $GLOBALS['__wp_shim']['environment_type'] ?? 'production';
 }
 
 function is_admin(): bool {
