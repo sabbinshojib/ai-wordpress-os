@@ -224,6 +224,13 @@ final class PermissionEngine {
 
         /**
          * Baseline access check: can this user use AI OS at all?
+         *
+         * ai_os_use is granted to the `administrator` role only, at
+         * activation (Activator::grantDefaultCapabilities()) — in
+         * practice this check passes for administrators via that grant
+         * OR manage_options, and for any editor/author/contributor via
+         * edit_posts (WordPress's own default), without AI OS ever
+         * granting anything to those lower roles itself.
          */
         public static function canUse( WP_User $user ): bool {
                 return $user->exists()

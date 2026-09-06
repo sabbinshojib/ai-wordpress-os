@@ -61,6 +61,8 @@ final class Activator {
 		// Settings defaults (Settings sanitizes + persists on construct).
 		new Settings();
 
+		$this->grantDefaultCapabilities();
+
 		// Schedule maintenance.
 		if ( ! wp_next_scheduled( 'ai_os_daily_maintenance' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'ai_os_daily_maintenance' );
@@ -108,5 +110,31 @@ final class Activator {
 		switch_to_blog( (int) $new_site->blog_id );
 		$this->activateSingleSite();
 		restore_current_blog();
+	}
+
+	/**
+	 * Minimum safe default for the ai_os_use / ai_os_approve
+	 * capabilities: only the `administrator` role receives them, and
+	 * only because `manage_options` already satisfies every gate they
+	 * exist for (PermissionEngine::canUse(),
+	 * AbstractController::canApprove()) — this makes them real, granted
+	 * capabilities instead of permanently-dead constants nothing ever
+	 * holds. No other role is touched: a site owner who wants a
+	 * non-administrator to approve actions must explicitly grant
+	 * ai_os_approve to that user or role themselves. `add_cap()` is
+	 * idempotent (WordPress just sets a boolean true), so calling this
+	 * on every activation — including a re-activation — is safe.
+	 */
+	private function grantDefaultCapabilities(): void {
+		$administrator = get_role( 'administrator' );
+		if ( null === $administrator ) {
+			return; // Defensive: a host without this built-in role at all.
+		}
+		if ( ! $administrator->has_cap( 'ai_os_use' ) ) {
+			$administrator->add_cap( 'ai_os_use' );
+		}
+		if ( ! $administrator->has_cap( 'ai_os_approve' ) ) {
+			$administrator->add_cap( 'ai_os_approve' );
+		}
 	}
 }

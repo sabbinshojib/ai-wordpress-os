@@ -66,6 +66,7 @@ $GLOBALS['__wp_shim'] = array(
         'current_blog_id'   => 1,
         'blog_switch_stack' => array(),
         'created_tables'    => array(),
+        'roles'             => array(),
 );
 
 function __shim_state(): array {
@@ -95,6 +96,7 @@ function __reset_shim(): void {
                 'current_blog_id'   => 1,
                 'blog_switch_stack' => array(),
                 'created_tables'    => array(),
+                'roles'             => array(),
         );
         $GLOBALS['wpdb'] = new wpdb();
 }
@@ -824,6 +826,59 @@ function get_plugins(): array {
 function current_user_can( string $cap ): bool {
         $user = wp_get_current_user();
         return $user->exists() && $user->has_cap( $cap );
+}
+
+/* ------------------------------------------------------------------ roles */
+
+/**
+ * Minimal WP_Role: enough for activation-time add_cap()/remove_cap()
+ * calls to be observable in a test (BUG capability-usability). Not
+ * wired into WP_User::has_cap(), which stays fixture-driven (explicit
+ * caps arrays via TestCase::adminUser()/editorUser()/etc.) — real
+ * per-user capability resolution through roles is exactly the kind of
+ * complexity those fixtures exist to sidestep.
+ */
+class WP_Role {
+        /** @var array<string, bool> */
+        public array $capabilities;
+
+        public function __construct( public string $name, array $capabilities = array() ) {
+                $this->capabilities = $capabilities;
+        }
+
+        public function add_cap( string $cap, bool $grant = true ): void {
+                $this->capabilities[ $cap ] = $grant;
+        }
+
+        public function remove_cap( string $cap ): void {
+                unset( $this->capabilities[ $cap ] );
+        }
+
+        public function has_cap( string $cap ): bool {
+                return ! empty( $this->capabilities[ $cap ] );
+        }
+}
+
+function get_role( string $role ): ?WP_Role {
+        if ( ! isset( $GLOBALS['__wp_shim']['roles'][ $role ] ) ) {
+                // Seeded once per role on first lookup — close enough to
+                // WordPress's own built-in role definitions for this
+                // plugin's activation-time capability checks.
+                $defaults = match ( $role ) {
+                        'administrator' => array(
+                                'manage_options' => true, 'edit_posts' => true, 'edit_pages' => true,
+                                'edit_others_posts' => true, 'publish_posts' => true, 'upload_files' => true,
+                                'delete_posts' => true, 'list_users' => true,
+                        ),
+                        'editor'      => array( 'edit_posts' => true, 'edit_pages' => true, 'edit_others_posts' => true, 'publish_posts' => true, 'upload_files' => true ),
+                        'author'      => array( 'edit_posts' => true, 'publish_posts' => true, 'upload_files' => true ),
+                        'contributor' => array( 'edit_posts' => true ),
+                        'subscriber'  => array(),
+                        default       => array(),
+                };
+                $GLOBALS['__wp_shim']['roles'][ $role ] = new WP_Role( $role, $defaults );
+        }
+        return $GLOBALS['__wp_shim']['roles'][ $role ];
 }
 
 function wp_kses_post( string $content ): string {

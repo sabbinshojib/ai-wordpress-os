@@ -54,6 +54,11 @@ abstract class AbstractController {
 
 	/**
 	 * Permission callback for approval decisions.
+	 *
+	 * ai_os_approve is granted to the `administrator` role only, at
+	 * activation (Activator::grantDefaultCapabilities()) — every other
+	 * role holds neither it nor manage_options unless a site owner
+	 * explicitly grants one.
 	 */
 	public function canApprove(): bool {
 		$user = wp_get_current_user();

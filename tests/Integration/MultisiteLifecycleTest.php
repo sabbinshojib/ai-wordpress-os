@@ -252,11 +252,13 @@ final class MultisiteLifecycleTest extends TestCase {
                 }
                 // uninstall.php defines ai_os_uninstall_current_site() at the
                 // top level; PHP fatals on a duplicate function definition,
-                // so only require it once per process.
-                static $included = false;
-                if ( ! $included ) {
+                // so only require it once per process. function_exists()
+                // (not a per-class static flag) is the correct guard here:
+                // CapabilityLifecycleTest also requires this same file, and
+                // whichever test class runs first in the process must be
+                // the one that "wins" the require for both of them.
+                if ( ! function_exists( 'ai_os_uninstall_current_site' ) ) {
                         require dirname( __DIR__, 2 ) . '/uninstall.php';
-                        $included = true;
                         return;
                 }
                 // Second+ call in the same process: re-run just the

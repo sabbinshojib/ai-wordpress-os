@@ -81,6 +81,17 @@ function ai_os_uninstall_current_site(): void {
 	foreach ( $ai_os_options as $ai_os_option ) {
 		delete_option( $ai_os_option );
 	}
+
+	// Remove only the two capabilities this plugin itself grants
+	// (Activator::grantDefaultCapabilities(), administrator role only)
+	// — never touch any other capability or role. Roles are stored
+	// per-site in WordPress, exactly like the options above, so this
+	// belongs inside the per-site cleanup, not the network-wide branch.
+	$ai_os_administrator_role = get_role( 'administrator' );
+	if ( null !== $ai_os_administrator_role ) {
+		$ai_os_administrator_role->remove_cap( 'ai_os_use' );
+		$ai_os_administrator_role->remove_cap( 'ai_os_approve' );
+	}
 }
 
 if ( is_multisite() ) {
