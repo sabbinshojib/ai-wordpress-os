@@ -4,7 +4,7 @@
 **Source documents:** `docs/audits/ENTERPRISE-READINESS-AUDIT.md`, `docs/audits/BUG-GAP-REGISTER.md`
 **Principle:** Every sprint below is a superset dependency of the next. No sprint after 0.1 should start until the sprint before it is green and merged. **Phase 2 (Sprint 1.x onward) does not begin until Sprint 0.x is fully complete and the test suite is green under CI.**
 
-**2026-09-07 status:** Sprints 0.1 and 0.3 (renumbered in practice as "0.3A," see below) are complete on `sprint/0.3-security-ci`. Sprints 0.2 (multisite posture was actually decided/implemented early, in Sprint 0.1 — see T-009b), 0.4, 0.5, 0.7, and 0.8 remain open. **Phase 2 has not started: zero Phase 2 code exists in this repository as of this update** (no `AIOS\Mutation\*` namespace, no ChangeSet/Snapshot/Diff/Rollback classes). The stated principle above is intact — Phase 2 begins only once Sprint 0.x is fully complete and green under CI, which it is not yet (Sprints 0.4/0.5/0.7/0.8 remain open). See `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md` for the exact Sprint 0.3A scope.
+**2026-09-07 status:** Sprints 0.1 and 0.3 (renumbered in practice as "0.3A," see below) are complete on `sprint/0.3-security-ci`. Sprints 0.2 (multisite posture was actually decided/implemented early, in Sprint 0.1 — see T-009b), 0.4, 0.5, 0.7, and 0.8 remain open. **Phase 2 has a real, tested, in-process implementation of items 1–8 below (Transaction/ChangeSet/Snapshot/Diff/Approval/Guarded-mutation/Verification/Rollback) — `AIOS\Mutation\*` — but no durable persistence layer, no Jobs/background execution (item 9), and it is NOT wired to any AI-facing tool/REST/MCP surface.** This is a deliberate deviation from the strict "Phase 2 begins only once Sprint 0.x is fully complete" reading of the principle above, done by explicit stakeholder direction; it does not change the principle for items 9 onward, or for exposing Phase 2 capability externally, which both still wait on Sprint 0.x completing. See `docs/ARCHITECTURE.md` §13 for the exact implemented-vs-not split and `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md` for the Sprint 0.3A narrative.
 
 ---
 
@@ -126,7 +126,7 @@
 
 Dependency-ordered, per the mandated sequencing:
 
-> **2026-09-07:** none of items 1–20 below have started. This list remains the target sequencing for whenever Sprint 0.x (0.4/0.5/0.7/0.8 specifically) is complete and green under CI — see the status note at the top of this document.
+> **2026-09-07:** items 1–8 below (Transaction Engine through Rollback system) have a real, tested, in-process implementation — no durable persistence, not exposed to any AI-facing surface (see `docs/ARCHITECTURE.md` §13 for the exact split). Item 9 (Jobs/background execution) and items 10–20 have not started. See the status note at the top of this document.
 
 1. **Transaction Engine** — foundational; every item below depends on it.
 2. **ChangeSet model** — depends on Transaction Engine.

@@ -2,9 +2,11 @@
 
 > Phase 1 Foundation — design document. This file describes the architecture that is
 > **implemented** in this release. Anything marked `Phase 2+` is designed-for but not
-> implemented yet (interfaces/slots exist, no fake UI and no dead buttons). §13 records
-> the target Phase 2 mutation pipeline's design — as of 2026-09-07 it is **design only,
-> zero code written** (no `AIOS\Mutation\*` namespace exists in this repository yet).
+> implemented yet (interfaces/slots exist, no fake UI and no dead buttons), with one
+> partial exception: §13's Phase 2 mutation pipeline has a real, tested, in-process
+> implementation (`AIOS\Mutation\*`) as of 2026-09-07 — but no durable persistence
+> layer, and it is not wired to any AI-facing tool/REST/MCP surface. See §13 for the
+> exact implemented-vs-not split; never round this up to "Phase 2 complete."
 
 ## 1. Product shape
 
@@ -330,7 +332,7 @@ Namespace `ai-os/v1`. All endpoints: permission callback, args validation + sani
 
 Each later phase lands as additional migrations + modules behind the same executor/permission/audit pipeline.
 
-## 13. Phase 2 mutation pipeline (hard workflow, design target — not yet implemented)
+## 13. Phase 2 mutation pipeline (hard workflow — PARTIAL, in-process only)
 
 Every Phase 2+ mutation — anything that changes site state beyond what Phase 1's tool
 catalog already covers (content/media CRUD) — is required to pass through this exact
@@ -353,23 +355,83 @@ User Request
                  or explicit operator request)
 ```
 
-**Status (2026-09-07): design only. Zero code exists.** No `AIOS\Mutation\*` namespace,
-no `ChangeSet`/`ChangeOperation`/`Snapshot`/`Diff`/`VerificationResult`/`RollbackRecord`
-class, and no safe-operation-type implementation (create/patch/delete file, option
-update, post/content update, reversible metadata update) exist anywhere in this
-repository as of Sprint 0.3A. This section records the *target* design — reusing Phase
-1's own `PermissionEngine` (Policy), `ApprovalRepository` (Approval), and `AuditLogger`
-(Audit) rather than parallel implementations — for whenever that work actually starts.
-Do not represent any Phase 2 mutation capability as implemented, foundation-stage or
-otherwise, until this section is updated alongside real, committed, tested code. The
-invariants below are requirements the eventual implementation must satisfy, not
-descriptions of anything that exists yet:
+**Status (2026-09-07): PARTIAL — real, tested pipeline mechanics; no durable state
+layer.** `AIOS\Mutation\*` exists (`ChangeOperationInterface`, `ChangeSet`, `Snapshot`,
+`MutationDiff`/`OperationDiff`/`DiffRenderer`, `ChangeSetFingerprint`, `ChangeSetState`,
+`VerificationResult`, `RollbackRecord`, `MutationResult`, `MutationEngine`) plus six
+concrete operations (`Operations\FileCreateOperation`, `FilePatchOperation`,
+`FileDeleteOperation`, `OptionUpdateOperation`, `PostContentUpdateOperation`,
+`MetadataUpdateOperation`). **Not exposed to any AI-facing tool, REST endpoint, or MCP
+surface** — `MutationEngine` is container-bindable and directly tested, nothing else
+can reach it.
+
+**Implemented and tested** (346 tests as of this update):
+- The full in-memory pipeline: Policy → Snapshot → Diff → Approval → Apply → Verify →
+  Audit → Rollback, in that order, for a single synchronous request.
+- Diff is a real, redacted before/after (`DiffRenderer`, reusing `AIOS\Support\Diff`
+  for the line-diff algorithm) — text diff for file operations, canonical-JSON value
+  diff for option/post/meta operations, secret-shaped values redacted to a hash
+  (`AIOS\Support\Sanitize::looksLikeSecret()`), binary content redacted to a hash,
+  content over 256 KiB truncated with hashes retained. Computed after Snapshot, before
+  Approval.
+- Approval is bound to a canonical `ChangeSetFingerprint` (id, site, actor, ordered
+  operations' type/target/payload-fingerprint, risk, diff hash) stored in the existing
+  `ApprovalRepository` row. `resumeApproved()` recomputes the fingerprint from the
+  ChangeSet the caller hands back and rejects on any mismatch (reordered/retargeted/
+  repayloaded operations, or a ChangeSet that plainly does not belong to that approval).
+- Stale-state/TOCTOU: each operation's live `currentPreconditionFingerprint()` is
+  compared, immediately before `apply()`, against the precondition captured at
+  submission time (stored alongside the approval) — a target that drifted during the
+  approval wait fails closed (`stale_state`) rather than applying against different
+  state than was reviewed.
+- Cross-site binding: `MutationEngine` switches to the ChangeSet's own site for
+  Snapshot/Diff/Apply/Rollback when it differs from the current request's site, so a
+  resume arriving in a different site's request context cannot mutate the wrong site.
+- Multi-operation ChangeSets: apply in order; a failure at any step rolls back every
+  already-applied operation in reverse order; a rollback failure is reported per
+  operation, never silently swallowed or reported as success.
+- `ChangeSetState`: the transition-legality authority (`PLANNED` → … → `COMPLETED`,
+  plus `FAILED`/`ROLLBACK_REQUIRED`/`ROLLING_BACK`/`ROLLED_BACK`/`ROLLBACK_FAILED`/
+  `EXPIRED`/`CANCELLED`/`STALE`), fails closed via `MutationException` on an illegal
+  transition — defined and tested, but **not yet consulted by anything durable**, since
+  no durable ChangeSet record exists yet (see below).
+
+**Not implemented — explicit gaps, not silently deferred:**
+- **No durable ChangeSet persistence.** A ChangeSet's operations live only in the
+  PHP request that constructed them; only the approval row (id, fingerprint, risk,
+  preview, submission-time preconditions) is durable. `resumeApproved()` requires the
+  caller to reconstruct and pass back the identical ChangeSet — safe (the fingerprint
+  check catches a mismatch) but not self-sufficient across a real multi-request
+  workflow without an external store of the ChangeSet's own operations.
+- **No encryption-at-rest for operation payloads** — there is nothing durable to
+  encrypt yet; `AIOS\Support\Crypto` (SEC-M5) is the intended mechanism once there is.
+- **No recovery journal.** A process crash mid-`apply()` for a multi-operation
+  ChangeSet is not durably recorded at per-operation granularity; only the in-memory
+  rollback-on-failure path (same request) is implemented.
+- **No safe-operation registry/rehydration** (a closed type-string → operation-class
+  whitelist for deserializing a persisted ChangeSet) — unnecessary today since nothing
+  is persisted, but required before persistence lands, to avoid ever instantiating a
+  class from untrusted stored data.
+- **No durable replay/idempotency or execution lease** beyond the atomic, already-real
+  `ApprovalRepository::claimPending()` (one approval can only ever be claimed once —
+  tested). A `COMPLETED`-state short-circuit and a cross-process execution lock both
+  depend on the durable store above.
+- **No retention/purge job** for mutation records (none exist to purge yet).
+- **No typed Planner boundary** — callers construct `ChangeSet`/operations directly;
+  a `MutationPlannerInterface`-style typed builder that is the *only* legitimate
+  upstream construction path (so Phase 3 cannot bypass validation) does not exist yet.
+
+See `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md` for the full narrative and the
+Phase 2 hardening pass's adversarial-review findings.
+
+Invariants enforced by construction (verified, not aspirational):
 
 - No direct AI → filesystem write, unrestricted shell, unrestricted SQL, or `eval` —
   every mutation is a typed `ChangeOperation`, never a raw command string.
 - Policy is checked before `Apply`, not after.
 - A `Snapshot` is captured before `Apply`, for every target, unconditionally.
-- `Approval` is required per the same risk-level rules Phase 1 already uses.
+- `Approval` is required per the same risk-level rules Phase 1 already uses, and is
+  bound to a fingerprint of exactly what was reviewed.
 - `Audit` records every attempt, not just successes.
 - `RollbackRecord`s are generated at `Snapshot` time, before any mutation — never
   reconstructed after the fact from partial state.
