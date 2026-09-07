@@ -5,10 +5,11 @@
 > implemented yet (interfaces/slots exist, no fake UI and no dead buttons), with one
 > partial exception: §13's Phase 2 mutation pipeline has a real, tested implementation
 > (`AIOS\Mutation\*`) as of 2026-09-07 — including durable, encrypted persistence, a
-> DB-backed execution lease, and durable replay protection — but no per-operation
-> crash-recovery journal, no real WordPress/MySQL execution (shim-only), and it is not
-> wired to any AI-facing tool/REST/MCP surface. See §13 for the exact
-> implemented-vs-not split; never round this up to "Phase 2 complete."
+> DB-backed execution lease, durable replay protection, and a per-operation
+> crash-recovery journal with classification-only recovery (no automatic mid-flight
+> continuation) — but real WordPress/MySQL execution is CI-CONFIGURED-NOT-RUN (shim-only
+> so far), and none of it is wired to any AI-facing tool/REST/MCP surface. See §13 for
+> the exact implemented-vs-not split; never round this up to "Phase 2 complete."
 
 ## 1. Product shape
 
@@ -357,21 +358,25 @@ User Request
                  or explicit operator request)
 ```
 
-**Status (2026-09-07): PARTIAL — real, tested pipeline mechanics AND a real, tested
-durable persistence layer; no per-operation crash-recovery journal, no AI-facing
+**Status (2026-09-07): PARTIAL — real, tested pipeline mechanics, a real, tested
+durable persistence layer, AND a real, tested per-operation crash-recovery journal
+(classification only — no automatic mid-flight continuation); no AI-facing
 exposure.** `AIOS\Mutation\*` exists: the in-process pipeline (`ChangeOperationInterface`,
 `ChangeSet`, `Snapshot`, `MutationDiff`/`OperationDiff`/`DiffRenderer`,
 `ChangeSetFingerprint`, `ChangeSetState`, `VerificationResult`, `RollbackRecord`,
 `MutationResult`, `MutationEngine`), six concrete operations (`Operations\FileCreateOperation`,
 `FilePatchOperation`, `FileDeleteOperation`, `OptionUpdateOperation`,
 `PostContentUpdateOperation`, `MetadataUpdateOperation`), the durable layer
-(`ChangeSetRepository`, `OperationRegistry`, `DurableMutationCoordinator`), and a typed
-Planner boundary (`MutationPlannerInterface`, `TypedChangeSetBuilder`,
+(`ChangeSetRepository`, `OperationRegistry`, `DurableMutationCoordinator`), the
+per-operation journal (`OperationJournalState`, `OperationJournalRepository`), and a
+typed Planner boundary (`MutationPlannerInterface`, `TypedChangeSetBuilder`,
 `OperationSpecification`). **Not exposed to any AI-facing tool, REST endpoint, or MCP
 surface** — everything here is container-bindable and directly tested, nothing else
-can reach it yet.
+can reach it yet (verified this pass via a repository-wide grep for `DurableMutationCoordinator`/
+`OperationJournalRepository`/`MutationEngine` under `src/Rest`, `src/Mcp`, `src/Tools`: no matches).
 
-**Implemented and tested** (396 tests as of this update):
+**Implemented and tested** (428 tests as of this update, PHP 8.2 and 8.3 both green,
+13/13 acceptance):
 - The full in-memory pipeline: Policy → Snapshot → Diff → Approval → Apply → Verify →
   Audit → Rollback, in that order, for a single synchronous request.
 - Diff is a real, redacted before/after (`DiffRenderer`, reusing `AIOS\Support\Diff`
@@ -438,23 +443,69 @@ can reach it yet.
   construction path for a future caller (Phase 3, not built). Rejects an unknown type,
   a class name disguised as a type, a non-`OperationSpecification` entry, and an empty
   specification list.
+- **Per-operation crash-recovery journal** (migration `202509070002`, table
+  `ai_os_operation_journal`): one row per `ChangeOperationInterface` instance within a
+  ChangeSet, with its own lifecycle (`OperationJournalState`: `PENDING` →
+  `SNAPSHOTTED` → `APPLYING` → `APPLIED` → `VERIFYING` → `VERIFIED`, plus
+  `ROLLBACK_REQUIRED`/`ROLLING_BACK`/`ROLLED_BACK`/`FAILED`/`ROLLBACK_FAILED`/
+  `MANUAL_RECOVERY_REQUIRED`) tracked independently of its siblings and of the
+  ChangeSet's own coarse `state` column. `MutationEngine::submit()`/`resumeApproved()`
+  accept an optional per-operation `$on_event` hook (`'snapshot_captured'`,
+  `'apply_started'`, `'apply_completed'`, `'apply_failed'`, `'verify_started'`,
+  `'verify_completed'`, `'stale_state_detected'`, `'rollback_started'`,
+  `'rollback_completed'`) that `DurableMutationCoordinator` uses to journal each step
+  as it happens — the engine itself knows nothing about persistence. Rows are
+  addressed by `(change_set_id, operation_index)`, never operation id: an operation
+  rehydrated by `OperationRegistry::rehydrate()` (the `resume()` path) gets a fresh
+  random id (`AbstractOperation`'s constructor), so only the operation's fixed
+  position in the ChangeSet's operations array survives a round trip — this was a real
+  bug this pass found via a failing integration test (the journal row stuck at
+  `snapshotted` after a real `resume()`), not merely reasoned about.
+- **Crash classification** (`DurableMutationCoordinator::recover()`): given a
+  ChangeSet id, inspects its journal rows and classifies into exactly one of two
+  unambiguous outcomes — fully clean (every row still `PENDING`/`SNAPSHOTTED`, i.e.
+  genuinely awaiting approval/resume, not a crash) or fully terminal (nothing to do) —
+  or escalates to `ChangeSetState::MANUAL_RECOVERY_REQUIRED` for everything else,
+  including a single operation that applied but was never verified, a multi-op
+  ChangeSet where only some operations show progress, and a rollback that itself
+  failed. **Deliberately does not attempt automatic mid-flight continuation** — several
+  of the six operation types are not safely re-appliable (`FileCreateOperation` once
+  the file exists; `FileDeleteOperation` once it is already gone), so this pass
+  implements precise, tested classification and fails closed rather than guessing.
+  `MANUAL_RECOVERY_REQUIRED` is terminal, is never auto-purged by retention
+  regardless of age, and escalating into it is always audited via `AuditLogger`
+  (`tool: 'mutation.recover'`) — independent of whether the underlying transition
+  actually happened.
+- **Retention cascade**: `ChangeSetRepository::purgeTerminalOlderThan()` deletes a
+  purged ChangeSet's journal rows with it (`OperationJournalRepository::
+  deleteForChangeSet()`), always before the parent row, so a crash between the two
+  leaves only a harmless orphaned journal row, never a journal row referencing an
+  already-deleted ChangeSet.
 
 **Not implemented — explicit gaps, not silently deferred:**
-- **No per-operation crash-recovery journal.** The durable row's `state` is the
-  recovery journal at ChangeSet granularity (a crash mid-apply leaves the row in
-  `APPLYING`, detectable), not per-operation granularity (which of N operations in a
-  multi-op ChangeSet had actually completed is not durably tracked independently of
-  the in-memory rollback-on-failure path, which only runs within the same request).
-- **No fault-injection test harness** for repository-layer failures (insert/update
-  failure, decrypt failure mid-flow) — covered only indirectly, via the real
-  (deterministic) tamper/wrong-key/malformed-envelope tests.
-- **No real WordPress/MySQL execution.** Every test above runs against this
-  repository's own PHP-only WordPress shim (`tests/shim/wp-functions.php`), not a real
-  MySQL/MariaDB instance or a real WordPress install — no such environment was
-  available in the authoring sandbox. This is an honest, explicit validation blocker
-  for production confidence in the SQL itself (the shim's fake SQL engine is
-  deliberately scoped, documented in its own file, and this work found and fixed one
-  of its latent gaps — see the report).
+- **No automatic crash-recovery continuation.** `recover()` classifies and escalates;
+  it never attempts to resume a partially-applied ChangeSet or finish an interrupted
+  rollback on its own. This is a deliberate scope boundary (see above), not an
+  oversight — resolving a `MANUAL_RECOVERY_REQUIRED` ChangeSet today requires a human
+  or a future, separately-scoped, operation-type-aware continuation engine.
+- **No repository-layer fault-injection harness** for a mid-transaction database
+  failure (an `INSERT`/`UPDATE` that fails partway through a multi-statement
+  sequence) — covered only indirectly, via the real (deterministic) tamper/wrong-key/
+  malformed-envelope/stale-CAS tests, and via `recover()`'s tests that directly force
+  a journal row into an in-flight state to model what a real crash would leave behind
+  (a real process crash cannot be induced from inside a single PHP test process).
+- **No real WordPress/MySQL execution — CI-CONFIGURED-NOT-RUN.** Every test above
+  (428 on both PHP 8.2 and 8.3, 13/13 acceptance) runs against this repository's own
+  PHP-only WordPress shim (`tests/shim/wp-functions.php`), never a real MySQL/MariaDB
+  instance or a real WordPress install — no such environment was available in the
+  authoring sandbox, and system-wide MySQL/WordPress installation was explicitly out
+  of scope for this pass. `.github/workflows/ci.yml`'s `test-real-wp-mysql` job now
+  exists (ephemeral MySQL service container + throwaway WP-CLI install + real dbDelta
+  migrations + `tools/ci/real-db-smoke.php` round-tripping the durable repositories
+  against real MySQL) but has **never been executed** — neither the workflow YAML nor
+  the smoke script's correctness has been observed to actually run. Do not read this
+  bullet, or any other doc, as claiming real-database validation until an actual CI
+  run of that job is green.
 - **No AI-facing exposure** — by design, for this pass. Nothing here is reachable from
   any REST endpoint, MCP tool, or admin action yet.
 
