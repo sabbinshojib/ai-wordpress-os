@@ -28,6 +28,7 @@ use AIOS\Rest\Controllers\ToolsController;
 use AIOS\Rest\RestApi;
 use AIOS\Security\ApiKeyManager;
 use AIOS\Security\Authenticator;
+use AIOS\Security\CapabilityManager;
 use AIOS\Security\PermissionEngine;
 use AIOS\Security\RateLimiter;
 use AIOS\Settings\Settings;
@@ -86,6 +87,9 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 
 		// Audit.
 		$container->bind( AuditLogger::class, static fn( Container $c ): AuditLogger => new AuditLogger( $c->get( AuditLogRepository::class ), $c->get( Settings::class ), $c->get( AuditIntegrity::class ) ) );
+
+		// Capability grant/revoke (depends on AuditLogger; bound after it above).
+		$container->bind( CapabilityManager::class, static fn( Container $c ): CapabilityManager => new CapabilityManager( $c->get( AuditLogger::class ) ) );
 
 		// Registries.
 		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );

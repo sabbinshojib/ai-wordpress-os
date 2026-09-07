@@ -15,6 +15,7 @@ namespace AIOS\Rest;
 use AIOS\Core\Container;
 use AIOS\Mcp\Transports\RestTransport;
 use AIOS\Rest\Controllers\ApprovalsController;
+use AIOS\Rest\Controllers\CapabilitiesController;
 use AIOS\Rest\Controllers\ContextController;
 use AIOS\Rest\Controllers\KeysController;
 use AIOS\Rest\Controllers\LogsController;
@@ -44,6 +45,7 @@ final class RestApi {
 		( new ContextController( $this->container ) )->register( $namespace );
 		( new SettingsController( $this->container ) )->register( $namespace );
 		( new KeysController( $this->container ) )->register( $namespace );
+		( new CapabilitiesController( $this->container ) )->register( $namespace );
 
 		/** @var RestTransport $transport */
 		$transport = $this->container->get( RestTransport::class );

@@ -97,6 +97,13 @@ function __reset_shim(): void {
                 'blog_switch_stack' => array(),
                 'created_tables'    => array(),
                 'roles'             => array(),
+                // Per-user, per-site capability overlay written by
+                // WP_User::add_cap()/remove_cap() and read back by
+                // get_userdata(): [blog_id][user_id][capability] = true.
+                // Mirrors real WordPress's per-site usermeta storage
+                // closely enough for CapabilityManager's grant/revoke
+                // tests, including multisite isolation.
+                'user_caps'         => array(),
         );
         $GLOBALS['wpdb'] = new wpdb();
 }
@@ -457,6 +464,26 @@ class WP_User {
                 );
         }
 
+        /**
+         * Real WP_User::add_cap()/remove_cap() persist to the user's
+         * usermeta (per-site in multisite). This mirrors that: the
+         * in-memory allcaps is updated immediately (so the same
+         * already-fetched instance reflects the change), AND the
+         * change is persisted to the current blog's overlay so a
+         * later get_userdata() call for this id sees it too.
+         */
+        public function add_cap( string $cap, bool $grant = true ): void {
+                $this->allcaps[ $cap ] = $grant;
+                $blog_id = function_exists( 'get_current_blog_id' ) ? get_current_blog_id() : 1;
+                $GLOBALS['__wp_shim']['user_caps'][ $blog_id ][ $this->ID ][ $cap ] = $grant;
+        }
+
+        public function remove_cap( string $cap ): void {
+                unset( $this->allcaps[ $cap ] );
+                $blog_id = function_exists( 'get_current_blog_id' ) ? get_current_blog_id() : 1;
+                unset( $GLOBALS['__wp_shim']['user_caps'][ $blog_id ][ $this->ID ][ $cap ] );
+        }
+
         public function has_cap( string $capability ): bool {
                 // Approximate map_meta_cap for the meta caps the plugin uses:
                 // edit_post/delete_post resolve to their primitive caps.
@@ -792,8 +819,35 @@ class WP_User_Query {
         }
 }
 
+/**
+ * User ids 1-4 mirror TestCase's adminUser()/editorUser()/
+ * contributorUser()/anonymousUser() fixtures exactly, so a user
+ * fetched here and one fetched via those helpers agree on baseline
+ * capabilities. Any grant/revoke made via WP_User::add_cap()/
+ * remove_cap() (CapabilityManager) is layered on top, scoped to the
+ * current blog — the same per-site isolation real WordPress usermeta
+ * has.
+ */
 function get_userdata( int $id ): WP_User|false {
-        return 1 === $id ? new WP_User( 1 ) : ( 2 === $id ? new WP_User( 2, array( 'edit_posts' => true, 'upload_files' => true, 'ai_os_use' => true ) ) : false );
+        $blog_id   = get_current_blog_id();
+        $persisted = $GLOBALS['__wp_shim']['user_caps'][ $blog_id ][ $id ] ?? array();
+
+        if ( ! in_array( $id, array( 1, 2, 3, 4 ), true ) && array() === $persisted ) {
+                return false; // Unknown user, never granted anything on this site: does not exist.
+        }
+
+        $user = match ( $id ) {
+                1       => new WP_User( 1 ), // null caps arg → WP_User's own full-admin default.
+                2       => new WP_User( 2, array( 'edit_posts' => true, 'upload_files' => true, 'ai_os_use' => true ) ),
+                3       => new WP_User( 3, array( 'edit_posts' => true, 'ai_os_use' => true ) ),
+                4       => new WP_User( 4, array() ),
+                default => new WP_User( $id, array() ),
+        };
+
+        foreach ( $persisted as $cap => $grant ) {
+                $user->allcaps[ $cap ] = $grant;
+        }
+        return $user;
 }
 
 function wp_next_scheduled( string $hook ): int|false {
