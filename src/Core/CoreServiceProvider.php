@@ -112,13 +112,21 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		// the same environment-derived key every other Crypto call site
 		// would default to (SEC-M5) — no new secret-management service.
 		$container->bind( Crypto::class, static fn(): Crypto => new Crypto() );
-		$container->bind( ChangeSetRepository::class, static fn( Container $c ): ChangeSetRepository => new ChangeSetRepository( $c->get( Database::class ), $c->get( Crypto::class ) ) );
 		$container->bind( \AIOS\Mutation\OperationJournalRepository::class, static fn( Container $c ): \AIOS\Mutation\OperationJournalRepository => new \AIOS\Mutation\OperationJournalRepository( $c->get( Database::class ), $c->get( Crypto::class ) ) );
+		$container->bind(
+			ChangeSetRepository::class,
+			static fn( Container $c ): ChangeSetRepository => new ChangeSetRepository(
+				$c->get( Database::class ),
+				$c->get( Crypto::class ),
+				$c->get( \AIOS\Mutation\OperationJournalRepository::class )
+			)
+		);
 		$container->bind(
 			DurableMutationCoordinator::class,
 			static fn( Container $c ): DurableMutationCoordinator => new DurableMutationCoordinator(
 				$c->get( ChangeSetRepository::class ),
-				$c->get( MutationEngine::class )
+				$c->get( MutationEngine::class ),
+				$c->get( \AIOS\Mutation\OperationJournalRepository::class )
 			)
 		);
 		$container->bind( \AIOS\Mutation\TypedChangeSetBuilder::class, static fn(): \AIOS\Mutation\TypedChangeSetBuilder => new \AIOS\Mutation\TypedChangeSetBuilder() );

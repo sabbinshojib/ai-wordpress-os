@@ -35,7 +35,8 @@ final class DurableMutationCoordinator {
 
 	public function __construct(
 		private readonly ChangeSetRepository $repository,
-		private readonly MutationEngine $engine
+		private readonly MutationEngine $engine,
+		private readonly OperationJournalRepository $journal
 	) {}
 
 	/**
@@ -55,7 +56,9 @@ final class DurableMutationCoordinator {
 			return MutationResult::rejected( $change_set->id(), 'An in-progress or already-decided ChangeSet exists for this idempotency key.' );
 		}
 
-		$result = $this->engine->submit( $change_set, $acting );
+		$this->createJournalRows( $change_set );
+
+		$result = $this->engine->submit( $change_set, $acting, $this->journalEventHook( $change_set->id(), $change_set ) );
 		$this->reflectFromPlanned( $change_set->id(), $result );
 		return $result;
 	}
@@ -92,12 +95,231 @@ final class DurableMutationCoordinator {
 			}
 			$this->repository->recordAttempt( $change_set_id );
 
-			$result = $this->engine->resumeApproved( $approval_id, $change_set, $decision, $deciding_user );
+			$result = $this->engine->resumeApproved( $approval_id, $change_set, $decision, $deciding_user, $this->journalEventHook( $change_set_id, $change_set ) );
 			$this->reflectFromPendingApproval( $change_set_id, $result );
 			return $result;
 		} finally {
 			$this->repository->releaseLease( $change_set_id, $owner_token );
 		}
+	}
+
+	/**
+	 * Crash recovery (Sprint 0.3A Phase 2 final hardening, Package E).
+	 * Called for a ChangeSet a caller suspects was interrupted mid-flight
+	 * (e.g. an operations dashboard listing durable rows stuck in a
+	 * non-terminal state with no active lease) — NEVER as part of the
+	 * normal submit()/resume() path, and never automatically.
+	 *
+	 * This does not attempt to determine "was it safe to auto-continue"
+	 * for a partially-applied ChangeSet: several of the six operation
+	 * types are not safely re-appliable (FileCreateOperation once the
+	 * file exists; FileDeleteOperation once the file is already gone),
+	 * so blind auto-continuation across mixed idempotency is unsafe.
+	 * Only the two unambiguous edge cases skip escalation:
+	 *
+	 *   - the ChangeSet is already terminal (nothing to recover), or
+	 *   - every one of its operations' journal rows shows apply() was
+	 *     never even attempted (still SNAPSHOTTED/PENDING — this is the
+	 *     ordinary "awaiting approval" or "never submitted for apply"
+	 *     state, not a crash).
+	 *
+	 * Anything else — a single operation applied-but-not-verified, a
+	 * ChangeSet where operation 2 of 3 crashed before starting, a
+	 * rollback that itself failed — fails closed to
+	 * ChangeSetState::MANUAL_RECOVERY_REQUIRED, a terminal state that
+	 * retention purge (AIOS\Mutation\ChangeSetRepository::
+	 * purgeTerminalOlderThan()) never removes.
+	 */
+	public function recover( string $change_set_id ): MutationResult {
+		$row = $this->repository->load( $change_set_id );
+		if ( null === $row ) {
+			return MutationResult::rejected( $change_set_id, 'Unknown ChangeSet.' );
+		}
+
+		$state = (string) $row['state'];
+		if ( ChangeSetState::isTerminal( $state ) ) {
+			return MutationResult::recoveryNotNeeded( $change_set_id );
+		}
+
+		$journal_rows = $this->journal->loadForChangeSet( $change_set_id );
+		if ( array() === $journal_rows ) {
+			// Nothing was ever journaled for this ChangeSet (e.g. it
+			// predates this journal, or Policy rejected it before any
+			// row was created) — there is no per-operation evidence to
+			// recover from either way.
+			return MutationResult::recoveryNotNeeded( $change_set_id );
+		}
+
+		$never_touched = array( OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED );
+		$all_clean     = true;
+		foreach ( $journal_rows as $jrow ) {
+			if ( ! in_array( (string) $jrow['state'], $never_touched, true ) ) {
+				$all_clean = false;
+				break;
+			}
+		}
+		if ( $all_clean ) {
+			return MutationResult::recoveryNotNeeded( $change_set_id );
+		}
+
+		$this->markManualRecovery( $change_set_id, $state );
+		return MutationResult::manualRecoveryRequired(
+			$change_set_id,
+			'Crash recovery found this ChangeSet mid-flight (at least one operation was applied or is in an in-flight state) with no evidence it reached a terminal outcome. Automatic continuation is not attempted — manual review of the operation journal is required.'
+		);
+	}
+
+	private function markManualRecovery( string $change_set_id, string $current_state ): void {
+		if ( ! ChangeSetState::isValidTransition( $current_state, ChangeSetState::MANUAL_RECOVERY_REQUIRED ) ) {
+			return; // Already at/past a state that does not need this — never force it.
+		}
+		$row = $this->repository->load( $change_set_id );
+		if ( null === $row ) {
+			return;
+		}
+		$this->repository->transition( $change_set_id, $current_state, ChangeSetState::MANUAL_RECOVERY_REQUIRED, (int) $row['state_version'] );
+	}
+
+	// ---------------------------------------------------------------- per-operation journal
+
+	private function createJournalRows( ChangeSet $change_set ): void {
+		foreach ( array_values( $change_set->operations() ) as $index => $operation ) {
+			$this->journal->create( $change_set->id(), $index, $operation, $change_set->siteId() );
+		}
+	}
+
+	/**
+	 * Builds the MutationEngine $on_event hook that journals every
+	 * per-operation lifecycle event into OperationJournalRepository.
+	 * Never makes a security decision — every decision MutationEngine
+	 * makes is made before this fires; this only records what already
+	 * happened, exactly like reflectFromPlanned()/reflectFromPendingApproval()
+	 * do for the ChangeSet-level state.
+	 *
+	 * Journal rows are addressed by OPERATION INDEX, not operation id:
+	 * AbstractOperation generates a fresh random id on every
+	 * construction, so the resumeApproved() path — which hands
+	 * MutationEngine a freshly REHYDRATED ChangeSet (OperationRegistry::
+	 * rehydrate(), via ChangeSetRepository::loadChangeSet()) — fires
+	 * events for operation OBJECTS with different ids than the ones
+	 * submit() originally journaled under. Only each operation's fixed
+	 * position within $change_set->operations() survives a rehydrate.
+	 * $index_by_object resolves an event's operation object back to
+	 * that position for THIS specific $change_set instance/call.
+	 *
+	 * Idempotent by construction (advance() only transitions when the
+	 * row is still at an expected "from" state) because resumeApproved()
+	 * re-runs captureSnapshots() a SECOND time — its 'snapshot_captured'
+	 * events must not fail just because the row already left PENDING
+	 * during the original submit().
+	 */
+	private function journalEventHook( string $change_set_id, ChangeSet $change_set ): \Closure {
+		$index_by_object = array();
+		foreach ( array_values( $change_set->operations() ) as $index => $operation ) {
+			$index_by_object[ spl_object_id( $operation ) ] = $index;
+		}
+
+		return function ( string $event, ChangeOperationInterface $operation, array $context ) use ( $change_set_id, $index_by_object ): void {
+			$operation_index = $index_by_object[ spl_object_id( $operation ) ] ?? null;
+			if ( null === $operation_index ) {
+				return; // Not one of this ChangeSet's own operations — should be unreachable.
+			}
+
+			switch ( $event ) {
+				case 'snapshot_captured':
+					/** @var Snapshot $snapshot */
+					$snapshot = $context['snapshot'];
+					$state    = $snapshot->state();
+					$json     = (string) json_encode( $state, JSON_UNESCAPED_SLASHES );
+					$this->journal->saveRecovery( $change_set_id, $operation_index, $state, hash( 'sha256', $json ) );
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::PENDING ), OperationJournalState::SNAPSHOTTED );
+					break;
+
+				case 'apply_started':
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::SNAPSHOTTED ), OperationJournalState::APPLYING );
+					$this->journal->markTimestamp( $change_set_id, $operation_index, 'apply_started_at' );
+					break;
+
+				case 'apply_completed':
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::APPLYING ), OperationJournalState::APPLIED );
+					$this->journal->markTimestamp( $change_set_id, $operation_index, 'apply_completed_at' );
+					break;
+
+				case 'apply_failed':
+					$error = substr( (string) ( $context['error'] ?? '' ), 0, 191 );
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::APPLYING ), OperationJournalState::FAILED, array( 'failure_code' => $error ) );
+					break;
+
+				case 'stale_state_detected':
+					// This operation's own apply() never ran — the stale
+					// check happens immediately before it, for the FIRST
+					// not-yet-applied operation only.
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::SNAPSHOTTED ), OperationJournalState::FAILED, array( 'failure_code' => 'stale_state' ) );
+					break;
+
+				case 'verify_started':
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::APPLIED ), OperationJournalState::VERIFYING );
+					$this->journal->markTimestamp( $change_set_id, $operation_index, 'verify_started_at' );
+					break;
+
+				case 'verify_completed':
+					/** @var VerificationResult $verification */
+					$verification = $context['verification'];
+					$this->journal->markTimestamp( $change_set_id, $operation_index, 'verify_completed_at' );
+					if ( $verification->ok() ) {
+						$this->advance( $change_set_id, $operation_index, array( OperationJournalState::VERIFYING ), OperationJournalState::VERIFIED );
+					} else {
+						$this->advance(
+							$change_set_id,
+							$operation_index,
+							array( OperationJournalState::VERIFYING ),
+							OperationJournalState::ROLLBACK_REQUIRED,
+							array( 'failure_code' => substr( $verification->message(), 0, 191 ) )
+						);
+					}
+					break;
+
+				case 'rollback_started':
+					// APPLIED/VERIFIED operations must pass through
+					// ROLLBACK_REQUIRED before ROLLING_BACK; an operation
+					// whose OWN verify() already failed reached
+					// ROLLBACK_REQUIRED via the 'verify_completed' branch
+					// above already, so this is a no-op for it here.
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::APPLIED, OperationJournalState::VERIFIED ), OperationJournalState::ROLLBACK_REQUIRED );
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::ROLLBACK_REQUIRED ), OperationJournalState::ROLLING_BACK );
+					$this->journal->markTimestamp( $change_set_id, $operation_index, 'rollback_started_at' );
+					break;
+
+				case 'rollback_completed':
+					/** @var RollbackRecord $record */
+					$record = $context['rollback'];
+					$this->journal->markTimestamp( $change_set_id, $operation_index, 'rollback_completed_at' );
+					$extra = $record->ok() ? array() : array( 'failure_code' => substr( $record->message(), 0, 191 ) );
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::ROLLING_BACK ), $record->ok() ? OperationJournalState::ROLLED_BACK : OperationJournalState::ROLLBACK_FAILED, $extra );
+					break;
+			}
+		};
+	}
+
+	/**
+	 * Load the journal row's CURRENT state and transition only when it
+	 * is still one of $allowed_from — silently a no-op otherwise. Never
+	 * an error: the resumeApproved() path re-fires 'snapshot_captured'
+	 * for a row already past PENDING, and that must not throw.
+	 *
+	 * @param string[] $allowed_from
+	 * @param array<string, mixed> $extra_fields
+	 */
+	private function advance( string $change_set_id, int $operation_index, array $allowed_from, string $to, array $extra_fields = array() ): void {
+		$row = $this->journal->load( $change_set_id, $operation_index );
+		if ( null === $row ) {
+			return;
+		}
+		$from = (string) $row['state'];
+		if ( ! in_array( $from, $allowed_from, true ) ) {
+			return;
+		}
+		$this->journal->transition( $change_set_id, $operation_index, $from, $to, (int) $row['state_version'], $extra_fields );
 	}
 
 	// ---------------------------------------------------------------- durable-state reflection

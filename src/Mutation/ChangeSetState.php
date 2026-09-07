@@ -34,6 +34,7 @@ final class ChangeSetState {
 	public const EXPIRED           = 'expired';
 	public const CANCELLED         = 'cancelled';
 	public const REJECTED          = 'rejected';
+	public const MANUAL_RECOVERY_REQUIRED = 'manual_recovery_required';
 
 	/**
 	 * from => [allowed to...]. A state absent from this map (or mapped
@@ -45,17 +46,33 @@ final class ChangeSetState {
 		// FAILED as a second PLANNED target covers captureSnapshot()
 		// itself throwing — there is no partial "SNAPSHOTTED" state to
 		// pass through when the snapshot step never completed at all.
-		self::PLANNED           => array( self::POLICY_REJECTED, self::SNAPSHOTTED, self::FAILED ),
-		self::SNAPSHOTTED       => array( self::DIFF_READY, self::FAILED ),
-		self::DIFF_READY        => array( self::PENDING_APPROVAL, self::APPLYING ),
-		self::PENDING_APPROVAL  => array( self::APPROVED, self::REJECTED, self::CANCELLED, self::EXPIRED, self::FAILED ),
-		self::APPROVED          => array( self::APPLYING, self::STALE, self::FAILED ),
-		self::APPLYING          => array( self::VERIFYING, self::FAILED ),
-		self::VERIFYING         => array( self::COMPLETED, self::ROLLBACK_REQUIRED ),
-		self::FAILED            => array( self::ROLLBACK_REQUIRED ),
+		//
+		// MANUAL_RECOVERY_REQUIRED is an additional legal target from
+		// every non-terminal state below: crash recovery (Sprint 0.3A
+		// Phase 2 final hardening, Package E — see DurableMutationCoordinator
+		// ::recover()) can find a durable ChangeSet "stuck" in ANY of
+		// these — a real process crash does not call back into this
+		// class to record its own interruption, so the row is simply
+		// left wherever it last was written. recover() fails closed to
+		// MANUAL_RECOVERY_REQUIRED for anything it cannot prove is
+		// either fully clean (nothing ever applied) or fully settled;
+		// this transition entry is what makes that legal from wherever
+		// the crash left the row, without ever needing a state-specific
+		// carve-out.
+		self::PLANNED           => array( self::POLICY_REJECTED, self::SNAPSHOTTED, self::FAILED, self::MANUAL_RECOVERY_REQUIRED ),
+		self::SNAPSHOTTED       => array( self::DIFF_READY, self::FAILED, self::MANUAL_RECOVERY_REQUIRED ),
+		self::DIFF_READY        => array( self::PENDING_APPROVAL, self::APPLYING, self::MANUAL_RECOVERY_REQUIRED ),
+		self::PENDING_APPROVAL  => array( self::APPROVED, self::REJECTED, self::CANCELLED, self::EXPIRED, self::FAILED, self::MANUAL_RECOVERY_REQUIRED ),
+		self::APPROVED          => array( self::APPLYING, self::STALE, self::FAILED, self::MANUAL_RECOVERY_REQUIRED ),
+		self::APPLYING          => array( self::VERIFYING, self::FAILED, self::MANUAL_RECOVERY_REQUIRED ),
+		self::VERIFYING         => array( self::COMPLETED, self::ROLLBACK_REQUIRED, self::MANUAL_RECOVERY_REQUIRED ),
+		self::FAILED            => array( self::ROLLBACK_REQUIRED, self::MANUAL_RECOVERY_REQUIRED ),
 		self::STALE             => array(),
-		self::ROLLBACK_REQUIRED => array( self::ROLLING_BACK ),
-		self::ROLLING_BACK      => array( self::ROLLED_BACK, self::ROLLBACK_FAILED ),
+		self::ROLLBACK_REQUIRED => array( self::ROLLING_BACK, self::MANUAL_RECOVERY_REQUIRED ),
+		self::ROLLING_BACK      => array( self::ROLLED_BACK, self::ROLLBACK_FAILED, self::MANUAL_RECOVERY_REQUIRED ),
+		// A rollback that itself failed can never be silently retried —
+		// the only legal next step is human review.
+		self::ROLLBACK_FAILED   => array( self::MANUAL_RECOVERY_REQUIRED ),
 	);
 
 	/**

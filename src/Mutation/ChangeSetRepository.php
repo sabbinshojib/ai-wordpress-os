@@ -44,7 +44,8 @@ final class ChangeSetRepository {
 
 	public function __construct(
 		private readonly Database $db,
-		private readonly Crypto $crypto
+		private readonly Crypto $crypto,
+		private readonly OperationJournalRepository $journal
 	) {}
 
 	private function table(): string {
@@ -218,7 +219,7 @@ final class ChangeSetRepository {
 	 */
 	public function loadRecovery( string $id ): ?array {
 		$row = $this->load( $id );
-		if ( null === $row || null === $row['recovery_ciphertext'] ) {
+		if ( null === $row || null === ( $row['recovery_ciphertext'] ?? null ) ) {
 			return null;
 		}
 		$plaintext = $this->crypto->decrypt( (string) $row['recovery_ciphertext'] );
@@ -312,9 +313,16 @@ final class ChangeSetRepository {
 				break;
 			}
 			$state = (string) ( $row['state'] ?? '' );
-			if ( ! ChangeSetState::isTerminal( $state ) || ChangeSetState::ROLLBACK_FAILED === $state ) {
+			if ( ! ChangeSetState::isTerminal( $state ) || ChangeSetState::MANUAL_RECOVERY_REQUIRED === $state ) {
 				continue; // Never purge non-terminal or manual-recovery-required rows.
 			}
+			// Retention cascade (Package N): a purged ChangeSet's per-
+			// operation journal rows go with it — never independently,
+			// and always BEFORE the ChangeSet row itself, so a crash
+			// between the two leaves an orphaned journal (harmless,
+			// cleaned up on the next run) rather than a journal row
+			// whose parent ChangeSet has already vanished.
+			$this->journal->deleteForChangeSet( (string) $row['change_set_id'] );
 			$del_sql = $this->db->prepare( 'DELETE FROM ' . $this->table() . ' WHERE change_set_id = %s', $row['change_set_id'] );
 			$purged += (int) ( $this->db->query( $del_sql ) ?? 0 );
 		}

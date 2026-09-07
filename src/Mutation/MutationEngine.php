@@ -85,8 +85,19 @@ final class MutationEngine {
 	/**
 	 * Run a ChangeSet through Policy → Snapshot → Diff → Approval →
 	 * [Apply → Verify → Audit → Rollback-on-failure].
+	 *
+	 * @param callable(string, ChangeOperationInterface, array<string,mixed>): void|null $on_event
+	 *        Optional per-operation lifecycle hook — invoked with an event name
+	 *        ('snapshot_captured', 'apply_started', 'apply_completed', 'apply_failed',
+	 *        'verify_started', 'verify_completed', 'stale_state_detected',
+	 *        'rollback_started', 'rollback_completed'), the operation, and a small
+	 *        context array (e.g. ['snapshot' => Snapshot] or ['error' => string]).
+	 *        Exists so a durable caller (AIOS\Mutation\DurableMutationCoordinator)
+	 *        can journal each step without this class knowing anything about
+	 *        persistence — never called for anything security-relevant; every
+	 *        decision this class makes is made before the hook fires, not because of it.
 	 */
-	public function submit( ChangeSet $change_set, WP_User $acting ): MutationResult {
+	public function submit( ChangeSet $change_set, WP_User $acting, ?callable $on_event = null ): MutationResult {
 		$policy_error = $this->checkPolicy( $change_set, $acting );
 		if ( null !== $policy_error ) {
 			$this->auditAttempt( $change_set, $acting, MutationResult::STATUS_POLICY_DENIED, $policy_error );
@@ -95,9 +106,9 @@ final class MutationEngine {
 
 		return $this->withSiteContext(
 			$change_set,
-			function () use ( $change_set, $acting ): MutationResult {
+			function () use ( $change_set, $acting, $on_event ): MutationResult {
 				try {
-					$snapshots = $this->captureSnapshots( $change_set );
+					$snapshots = $this->captureSnapshots( $change_set, $on_event );
 				} catch ( MutationException $e ) {
 					$this->auditAttempt( $change_set, $acting, MutationResult::STATUS_SNAPSHOT_FAILED, $e->getMessage() );
 					return MutationResult::snapshotFailed( $change_set->id(), $e->getMessage() );
@@ -143,7 +154,7 @@ final class MutationEngine {
 					return MutationResult::policyDenied( $change_set->id(), $error );
 				}
 
-				return $this->applyChangeSet( $change_set, $acting, $snapshots );
+				return $this->applyChangeSet( $change_set, $acting, $snapshots, null, null, $on_event );
 			}
 		);
 	}
@@ -156,7 +167,7 @@ final class MutationEngine {
 	 * ChangeSet under the same approval id fail safely instead of
 	 * silently applying the wrong thing.
 	 */
-	public function resumeApproved( int $approval_id, ChangeSet $change_set, string $decision, WP_User $deciding_user ): MutationResult {
+	public function resumeApproved( int $approval_id, ChangeSet $change_set, string $decision, WP_User $deciding_user, ?callable $on_event = null ): MutationResult {
 		$approval = $this->approvals->claimPending( $approval_id, $decision, $deciding_user->ID );
 		if ( null === $approval ) {
 			return MutationResult::rejected( $change_set->id(), 'Approval is missing, already decided, or expired.' );
@@ -196,7 +207,7 @@ final class MutationEngine {
 
 		return $this->withSiteContext(
 			$change_set,
-			function () use ( $change_set, $deciding_user, $approval_id, $original_preconditions ): MutationResult {
+			function () use ( $change_set, $deciding_user, $approval_id, $original_preconditions, $on_event ): MutationResult {
 				try {
 					// Re-snapshot fresh — this captures accurate CURRENT
 					// state for rollback data, but the staleness check
@@ -205,12 +216,12 @@ final class MutationEngine {
 					// not against this fresh snapshot's own precondition
 					// (which would trivially match itself and could never
 					// detect drift that happened during the approval wait).
-					$snapshots = $this->captureSnapshots( $change_set );
+					$snapshots = $this->captureSnapshots( $change_set, $on_event );
 				} catch ( MutationException $e ) {
 					$this->auditAttempt( $change_set, $deciding_user, MutationResult::STATUS_SNAPSHOT_FAILED, $e->getMessage(), $approval_id );
 					return MutationResult::snapshotFailed( $change_set->id(), $e->getMessage() );
 				}
-				return $this->applyChangeSet( $change_set, $deciding_user, $snapshots, $approval_id, $original_preconditions );
+				return $this->applyChangeSet( $change_set, $deciding_user, $snapshots, $approval_id, $original_preconditions, $on_event );
 			}
 		);
 	}
@@ -239,10 +250,14 @@ final class MutationEngine {
 	/**
 	 * @return array<string, Snapshot> operation id => Snapshot
 	 */
-	private function captureSnapshots( ChangeSet $change_set ): array {
+	private function captureSnapshots( ChangeSet $change_set, ?callable $on_event = null ): array {
 		$snapshots = array();
 		foreach ( $change_set->operations() as $operation ) {
-			$snapshots[ $operation->id() ] = $operation->captureSnapshot();
+			$snapshot = $operation->captureSnapshot();
+			$snapshots[ $operation->id() ] = $snapshot;
+			if ( null !== $on_event ) {
+				$on_event( 'snapshot_captured', $operation, array( 'snapshot' => $snapshot ) );
+			}
 		}
 		return $snapshots;
 	}
@@ -290,7 +305,7 @@ final class MutationEngine {
 	 *        against a freshly re-captured snapshot's own precondition would be vacuous, since it would
 	 *        always match itself regardless of what changed during the approval wait.
 	 */
-	private function applyChangeSet( ChangeSet $change_set, WP_User $acting, array $snapshots, ?int $approval_id = null, ?array $expected_preconditions = null ): MutationResult {
+	private function applyChangeSet( ChangeSet $change_set, WP_User $acting, array $snapshots, ?int $approval_id = null, ?array $expected_preconditions = null, ?callable $on_event = null ): MutationResult {
 		$applied = array(); // operation ids applied so far, in order.
 
 		foreach ( $change_set->operations() as $operation ) {
@@ -299,17 +314,29 @@ final class MutationEngine {
 				? ( $expected_preconditions[ $operation->id() ] ?? null )
 				: ( $snapshot?->state()['precondition'] ?? null );
 			if ( null !== $expected && ! hash_equals( (string) $expected, $operation->currentPreconditionFingerprint() ) ) {
-				$rollbacks = $this->rollbackApplied( $applied, $snapshots );
+				if ( null !== $on_event ) {
+					$on_event( 'stale_state_detected', $operation, array() );
+				}
+				$rollbacks = $this->rollbackApplied( $applied, $snapshots, $on_event );
 				$error     = sprintf( 'stale state detected for operation %s (%s: %s) — target changed since Snapshot/Approval', $operation->id(), $operation->type(), $operation->target() );
 				$this->auditAttempt( $change_set, $acting, MutationResult::STATUS_STALE_STATE, $error, $approval_id );
 				return MutationResult::staleState( $change_set->id(), $error, $rollbacks );
 			}
 
+			if ( null !== $on_event ) {
+				$on_event( 'apply_started', $operation, array() );
+			}
 			try {
 				$operation->apply();
 				$applied[] = $operation;
+				if ( null !== $on_event ) {
+					$on_event( 'apply_completed', $operation, array() );
+				}
 			} catch ( MutationException $e ) {
-				$rollbacks = $this->rollbackApplied( $applied, $snapshots );
+				if ( null !== $on_event ) {
+					$on_event( 'apply_failed', $operation, array( 'error' => $e->getMessage() ) );
+				}
+				$rollbacks = $this->rollbackApplied( $applied, $snapshots, $on_event );
 				$this->auditAttempt( $change_set, $acting, MutationResult::STATUS_APPLY_FAILED, $e->getMessage(), $approval_id );
 				return MutationResult::applyFailed( $change_set->id(), $e->getMessage(), $rollbacks );
 			}
@@ -318,15 +345,21 @@ final class MutationEngine {
 		$verifications = array();
 		$all_verified  = true;
 		foreach ( $change_set->operations() as $operation ) {
+			if ( null !== $on_event ) {
+				$on_event( 'verify_started', $operation, array() );
+			}
 			$result          = $operation->verify();
 			$verifications[] = $result;
+			if ( null !== $on_event ) {
+				$on_event( 'verify_completed', $operation, array( 'verification' => $result ) );
+			}
 			if ( ! $result->ok() ) {
 				$all_verified = false;
 			}
 		}
 
 		if ( ! $all_verified ) {
-			$rollbacks = $this->rollbackApplied( $applied, $snapshots );
+			$rollbacks = $this->rollbackApplied( $applied, $snapshots, $on_event );
 			$this->auditAttempt( $change_set, $acting, MutationResult::STATUS_VERIFICATION_FAILED, 'verification failed', $approval_id );
 			return MutationResult::verificationFailed( $change_set->id(), $verifications, $rollbacks );
 		}
@@ -343,7 +376,7 @@ final class MutationEngine {
 	 * @param array<string, Snapshot>    $snapshots
 	 * @return RollbackRecord[]
 	 */
-	private function rollbackApplied( array $applied, array $snapshots ): array {
+	private function rollbackApplied( array $applied, array $snapshots, ?callable $on_event = null ): array {
 		$records = array();
 		foreach ( array_reverse( $applied ) as $operation ) {
 			$snapshot = $snapshots[ $operation->id() ] ?? null;
@@ -351,10 +384,17 @@ final class MutationEngine {
 				$records[] = RollbackRecord::failure( $operation->id(), '', 'no snapshot available for this operation' );
 				continue;
 			}
+			if ( null !== $on_event ) {
+				$on_event( 'rollback_started', $operation, array() );
+			}
 			try {
-				$records[] = $operation->rollback( $snapshot );
+				$record = $operation->rollback( $snapshot );
 			} catch ( \Throwable $e ) {
-				$records[] = RollbackRecord::failure( $operation->id(), $snapshot->id(), $e->getMessage() );
+				$record = RollbackRecord::failure( $operation->id(), $snapshot->id(), $e->getMessage() );
+			}
+			$records[] = $record;
+			if ( null !== $on_event ) {
+				$on_event( 'rollback_completed', $operation, array( 'rollback' => $record ) );
 			}
 		}
 		return $records;

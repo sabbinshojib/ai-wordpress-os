@@ -59,8 +59,28 @@ final class ChangeSetStateTest extends TestCase {
 		$this->assertTrue( ChangeSetState::isValidTransition( ChangeSetState::ROLLING_BACK, ChangeSetState::ROLLBACK_FAILED ) );
 	}
 
-	public function test_rollback_failed_is_terminal(): void {
-		$this->assertTrue( ChangeSetState::isTerminal( ChangeSetState::ROLLBACK_FAILED ) );
+	public function test_rollback_failed_can_only_escalate_to_manual_recovery(): void {
+		$this->assertFalse( ChangeSetState::isTerminal( ChangeSetState::ROLLBACK_FAILED ) );
+		$this->assertTrue( ChangeSetState::isValidTransition( ChangeSetState::ROLLBACK_FAILED, ChangeSetState::MANUAL_RECOVERY_REQUIRED ) );
+		foreach ( ChangeSetState::all() as $state ) {
+			if ( ChangeSetState::MANUAL_RECOVERY_REQUIRED === $state ) {
+				continue;
+			}
+			$this->assertFalse( ChangeSetState::isValidTransition( ChangeSetState::ROLLBACK_FAILED, $state ), "ROLLBACK_FAILED -> {$state} must never be legal" );
+		}
+	}
+
+	public function test_manual_recovery_required_is_reachable_from_every_non_terminal_state_and_is_itself_terminal(): void {
+		foreach ( ChangeSetState::all() as $state ) {
+			if ( ChangeSetState::MANUAL_RECOVERY_REQUIRED === $state || ChangeSetState::isTerminal( $state ) ) {
+				continue;
+			}
+			$this->assertTrue(
+				ChangeSetState::isValidTransition( $state, ChangeSetState::MANUAL_RECOVERY_REQUIRED ),
+				"{$state} -> MANUAL_RECOVERY_REQUIRED must be legal (crash recovery must be able to fail closed from any live state)"
+			);
+		}
+		$this->assertTrue( ChangeSetState::isTerminal( ChangeSetState::MANUAL_RECOVERY_REQUIRED ) );
 	}
 
 	public function test_assert_transition_throws_on_illegal_transition(): void {

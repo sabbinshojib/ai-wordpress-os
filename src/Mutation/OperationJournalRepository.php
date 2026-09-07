@@ -59,18 +59,23 @@ final class OperationJournalRepository {
 			)
 		);
 		/** @var array<string, mixed> $row */
-		$row = $this->load( $change_set_id, $operation->id() );
+		$row = $this->load( $change_set_id, $operation_index );
 		return $row;
 	}
 
 	/**
+	 * Addressed by ($change_set_id, $operation_index) — NOT operation
+	 * id, which is not stable across a rehydrate() (see this table's
+	 * migration docblock for why). $operation_index is the operation's
+	 * fixed position within the ChangeSet's operations array.
+	 *
 	 * @return array<string, mixed>|null
 	 */
-	public function load( string $change_set_id, string $operation_id ): ?array {
+	public function load( string $change_set_id, int $operation_index ): ?array {
 		$sql = $this->db->prepare(
-			'SELECT * FROM ' . $this->table() . ' WHERE change_set_id = %s AND operation_id = %s',
+			'SELECT * FROM ' . $this->table() . ' WHERE change_set_id = %s AND operation_index = %d',
 			$change_set_id,
-			$operation_id
+			$operation_index
 		);
 		$row = $this->db->getRow( $sql );
 		return null === $row ? null : $this->hydrate( $row );
@@ -97,7 +102,7 @@ final class OperationJournalRepository {
 	 *
 	 * @param array<string, mixed> $extra_fields Additional columns (e.g. timestamps, failure_code).
 	 */
-	public function transition( string $change_set_id, string $operation_id, string $from_state, string $to_state, int $expected_version, array $extra_fields = array() ): bool {
+	public function transition( string $change_set_id, int $operation_index, string $from_state, string $to_state, int $expected_version, array $extra_fields = array() ): bool {
 		OperationJournalState::assertTransition( $from_state, $to_state );
 
 		$data = array_merge(
@@ -112,7 +117,7 @@ final class OperationJournalRepository {
 		$updated = $this->db->update(
 			$this->table(),
 			$data,
-			array( 'change_set_id' => $change_set_id, 'operation_id' => $operation_id, 'state' => $from_state, 'state_version' => $expected_version )
+			array( 'change_set_id' => $change_set_id, 'operation_index' => $operation_index, 'state' => $from_state, 'state_version' => $expected_version )
 		);
 		return 1 === $updated;
 	}
@@ -125,7 +130,7 @@ final class OperationJournalRepository {
 	 *
 	 * @param array<string, mixed> $recovery_state
 	 */
-	public function saveRecovery( string $change_set_id, string $operation_id, array $recovery_state, string $snapshot_hash ): bool {
+	public function saveRecovery( string $change_set_id, int $operation_index, array $recovery_state, string $snapshot_hash ): bool {
 		$json = (string) json_encode( $recovery_state, JSON_UNESCAPED_SLASHES );
 		$updated = $this->db->update(
 			$this->table(),
@@ -135,7 +140,7 @@ final class OperationJournalRepository {
 				'snapshot_hash'       => $snapshot_hash,
 				'updated_at'          => $this->now(),
 			),
-			array( 'change_set_id' => $change_set_id, 'operation_id' => $operation_id )
+			array( 'change_set_id' => $change_set_id, 'operation_index' => $operation_index )
 		);
 		return $updated > 0;
 	}
@@ -144,9 +149,9 @@ final class OperationJournalRepository {
 	 * @return array<string, mixed>|null
 	 * @throws MutationException "changeset.decrypt_failed"/"changeset.integrity_failed" (same codes as ChangeSetRepository).
 	 */
-	public function loadRecovery( string $change_set_id, string $operation_id ): ?array {
-		$row = $this->load( $change_set_id, $operation_id );
-		if ( null === $row || null === $row['recovery_ciphertext'] ) {
+	public function loadRecovery( string $change_set_id, int $operation_index ): ?array {
+		$row = $this->load( $change_set_id, $operation_index );
+		if ( null === $row || null === ( $row['recovery_ciphertext'] ?? null ) ) {
 			return null;
 		}
 		$plaintext = $this->crypto->decrypt( (string) $row['recovery_ciphertext'] );
@@ -160,12 +165,12 @@ final class OperationJournalRepository {
 		return is_array( $decoded ) ? $decoded : null;
 	}
 
-	public function markTimestamp( string $change_set_id, string $operation_id, string $column ): void {
+	public function markTimestamp( string $change_set_id, int $operation_index, string $column ): void {
 		$allowed = array( 'apply_started_at', 'apply_completed_at', 'verify_started_at', 'verify_completed_at', 'rollback_started_at', 'rollback_completed_at' );
 		if ( ! in_array( $column, $allowed, true ) ) {
 			return;
 		}
-		$this->db->update( $this->table(), array( $column => $this->now(), 'updated_at' => $this->now() ), array( 'change_set_id' => $change_set_id, 'operation_id' => $operation_id ) );
+		$this->db->update( $this->table(), array( $column => $this->now(), 'updated_at' => $this->now() ), array( 'change_set_id' => $change_set_id, 'operation_index' => $operation_index ) );
 	}
 
 	/**

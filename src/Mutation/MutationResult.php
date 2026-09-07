@@ -23,6 +23,8 @@ final class MutationResult {
 	public const STATUS_STALE_STATE         = 'stale_state';
 	public const STATUS_FINGERPRINT_MISMATCH = 'fingerprint_mismatch';
 	public const STATUS_ALREADY_COMPLETED   = 'already_completed';
+	public const STATUS_MANUAL_RECOVERY_REQUIRED = 'manual_recovery_required';
+	public const STATUS_RECOVERY_NOT_NEEDED = 'recovery_not_needed';
 
 	/**
 	 * @param VerificationResult[] $verifications
@@ -83,6 +85,28 @@ final class MutationResult {
 
 	public static function alreadyCompleted( string $change_set_id ): self {
 		return new self( self::STATUS_ALREADY_COMPLETED, $change_set_id, null, array(), array(), null );
+	}
+
+	/**
+	 * Crash recovery could not prove this ChangeSet is either fully
+	 * clean (nothing ever applied) or fully settled — it fails closed
+	 * rather than guessing whether it is safe to continue or replay.
+	 * The ChangeSet's durable state has already been moved to
+	 * ChangeSetState::MANUAL_RECOVERY_REQUIRED by the time this is
+	 * returned; it is never auto-purged by retention.
+	 */
+	public static function manualRecoveryRequired( string $change_set_id, string $error ): self {
+		return new self( self::STATUS_MANUAL_RECOVERY_REQUIRED, $change_set_id, null, array(), array(), $error );
+	}
+
+	/**
+	 * Crash recovery inspected this ChangeSet and found nothing to do:
+	 * either it is already terminal, or every operation's journal row
+	 * shows it was never touched by apply() (still awaiting a normal
+	 * submit()/resume() call, not a crash).
+	 */
+	public static function recoveryNotNeeded( string $change_set_id ): self {
+		return new self( self::STATUS_RECOVERY_NOT_NEEDED, $change_set_id, null, array(), array(), null );
 	}
 
 	public function ok(): bool {

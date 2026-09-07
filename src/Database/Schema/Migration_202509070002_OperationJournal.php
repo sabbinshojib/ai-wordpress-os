@@ -9,7 +9,19 @@
  * process died" a durable, queryable fact rather than something only
  * inferable from live target state.
  *
- * `change_set_id` + `operation_id` together identify a row (UNIQUE);
+ * `change_set_id` + `operation_index` together identify a row
+ * (UNIQUE) — NOT `operation_id`: AIOS\Mutation\Operations\
+ * AbstractOperation generates a fresh random id on every
+ * construction, so OperationRegistry::rehydrate() (the path
+ * DurableMutationCoordinator::resume() takes to reconstruct a
+ * ChangeSet from its durable row) produces operation objects with
+ * DIFFERENT ids than the ones submit() originally journaled under.
+ * `operation_index` (the operation's fixed position within the
+ * ChangeSet's operations array) is the one thing serialize()/
+ * rehydrate() preserve deterministically, so it is the correct
+ * correlation key. `operation_id` is still stored, but purely as
+ * informational metadata (whatever id the operation happened to have
+ * at the moment this row was written) — never used to address a row.
  * `id` is the usual auto-increment surrogate, matching every other
  * table in this schema.
  *
@@ -74,7 +86,7 @@ final class Migration_202509070002_OperationJournal implements MigrationInterfac
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL,
 			PRIMARY KEY  (id),
-			UNIQUE KEY change_set_operation (change_set_id, operation_id),
+			UNIQUE KEY change_set_operation (change_set_id, operation_index),
 			KEY change_set_state (change_set_id, state)
 		) {$collate};";
 		dbDelta( $sql );

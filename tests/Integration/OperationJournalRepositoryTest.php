@@ -5,6 +5,12 @@
  * ordering by operation_index, encrypted recovery round-trip and
  * tamper detection, and CAS transitions via OperationJournalState.
  *
+ * Rows are addressed by (change_set_id, operation_index) — NOT
+ * operation id — because AbstractOperation generates a fresh random
+ * id on every construction, so a rehydrated operation (the resume()
+ * path) never has the same id as the one a row was created under. See
+ * Migration_202509070002_OperationJournal's docblock.
+ *
  * @package AIOS\Tests\Integration
  */
 
@@ -40,12 +46,12 @@ final class OperationJournalRepositoryTest extends TestCase {
 		$this->assertEquals( OperationJournalState::PENDING, $row['state'] );
 		$this->assertEquals( 0, $row['state_version'] );
 
-		$loaded = $this->repo->load( 'cs_test1', $op->id() );
+		$loaded = $this->repo->load( 'cs_test1', 0 );
 		$this->assertEquals( $row, $loaded );
 	}
 
 	public function test_load_missing_row_returns_null(): void {
-		$this->assertNull( $this->repo->load( 'cs_none', 'op_none' ) );
+		$this->assertNull( $this->repo->load( 'cs_none', 0 ) );
 	}
 
 	public function test_load_for_change_set_orders_by_operation_index(): void {
@@ -71,10 +77,10 @@ final class OperationJournalRepositoryTest extends TestCase {
 		$op = new OptionUpdateOperation( 'aios_journal_cas', 'v' );
 		$this->repo->create( 'cs_cas', 0, $op, 1 );
 
-		$ok = $this->repo->transition( 'cs_cas', $op->id(), OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
+		$ok = $this->repo->transition( 'cs_cas', 0, OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
 		$this->assertTrue( $ok );
 
-		$row = $this->repo->load( 'cs_cas', $op->id() );
+		$row = $this->repo->load( 'cs_cas', 0 );
 		$this->assertEquals( OperationJournalState::SNAPSHOTTED, $row['state'] );
 		$this->assertEquals( 1, $row['state_version'] );
 	}
@@ -84,21 +90,21 @@ final class OperationJournalRepositoryTest extends TestCase {
 		$this->repo->create( 'cs_illegal', 0, $op, 1 );
 
 		try {
-			$this->repo->transition( 'cs_illegal', $op->id(), OperationJournalState::PENDING, OperationJournalState::APPLIED, 0 );
+			$this->repo->transition( 'cs_illegal', 0, OperationJournalState::PENDING, OperationJournalState::APPLIED, 0 );
 			$this->assertTrue( false, 'expected MutationException' );
 		} catch ( MutationException $e ) {
 			$this->assertEquals( 'operation_journal.illegal_transition', $e->errorCode() );
 		}
-		$row = $this->repo->load( 'cs_illegal', $op->id() );
+		$row = $this->repo->load( 'cs_illegal', 0 );
 		$this->assertEquals( OperationJournalState::PENDING, $row['state'] );
 	}
 
 	public function test_stale_state_version_fails_the_cas(): void {
 		$op = new OptionUpdateOperation( 'aios_journal_stale', 'v' );
 		$this->repo->create( 'cs_stale', 0, $op, 1 );
-		$this->repo->transition( 'cs_stale', $op->id(), OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
+		$this->repo->transition( 'cs_stale', 0, OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
 
-		$ok = $this->repo->transition( 'cs_stale', $op->id(), OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
+		$ok = $this->repo->transition( 'cs_stale', 0, OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
 		$this->assertFalse( $ok );
 	}
 
@@ -108,10 +114,10 @@ final class OperationJournalRepositoryTest extends TestCase {
 		$this->repo->create( 'cs_indep', 0, $op_a, 1 );
 		$this->repo->create( 'cs_indep', 1, $op_b, 1 );
 
-		$this->repo->transition( 'cs_indep', $op_a->id(), OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
+		$this->repo->transition( 'cs_indep', 0, OperationJournalState::PENDING, OperationJournalState::SNAPSHOTTED, 0 );
 
-		$row_a = $this->repo->load( 'cs_indep', $op_a->id() );
-		$row_b = $this->repo->load( 'cs_indep', $op_b->id() );
+		$row_a = $this->repo->load( 'cs_indep', 0 );
+		$row_b = $this->repo->load( 'cs_indep', 1 );
 		$this->assertEquals( OperationJournalState::SNAPSHOTTED, $row_a['state'] );
 		$this->assertEquals( OperationJournalState::PENDING, $row_b['state'], 'transitioning one operations journal row must never affect a sibling' );
 	}
@@ -122,15 +128,15 @@ final class OperationJournalRepositoryTest extends TestCase {
 		$op = new OptionUpdateOperation( 'aios_journal_recovery', 'v' );
 		$this->repo->create( 'cs_recovery', 0, $op, 1 );
 
-		$this->assertNull( $this->repo->loadRecovery( 'cs_recovery', $op->id() ) );
+		$this->assertNull( $this->repo->loadRecovery( 'cs_recovery', 0 ) );
 
 		$state = array( 'original_value' => 'secret-original-value' );
-		$this->assertTrue( $this->repo->saveRecovery( 'cs_recovery', $op->id(), $state, hash( 'sha256', 'x' ) ) );
+		$this->assertTrue( $this->repo->saveRecovery( 'cs_recovery', 0, $state, hash( 'sha256', 'x' ) ) );
 
-		$loaded = $this->repo->loadRecovery( 'cs_recovery', $op->id() );
+		$loaded = $this->repo->loadRecovery( 'cs_recovery', 0 );
 		$this->assertEquals( $state, $loaded );
 
-		$row = $this->repo->load( 'cs_recovery', $op->id() );
+		$row = $this->repo->load( 'cs_recovery', 0 );
 		$this->assertFalse( str_contains( (string) $row['recovery_ciphertext'], 'secret-original-value' ) );
 		$this->assertTrue( str_starts_with( (string) $row['recovery_ciphertext'], 'aios1:' ) );
 	}
@@ -138,7 +144,7 @@ final class OperationJournalRepositoryTest extends TestCase {
 	public function test_tampered_recovery_ciphertext_fails_closed(): void {
 		$op = new OptionUpdateOperation( 'aios_journal_tamper', 'v' );
 		$this->repo->create( 'cs_tamper', 0, $op, 1 );
-		$this->repo->saveRecovery( 'cs_tamper', $op->id(), array( 'x' => 1 ), 'h' );
+		$this->repo->saveRecovery( 'cs_tamper', 0, array( 'x' => 1 ), 'h' );
 
 		global $wpdb;
 		foreach ( $wpdb->tables['ai_os_operation_journal'] as $i => $row ) {
@@ -148,7 +154,7 @@ final class OperationJournalRepositoryTest extends TestCase {
 		}
 
 		try {
-			$this->repo->loadRecovery( 'cs_tamper', $op->id() );
+			$this->repo->loadRecovery( 'cs_tamper', 0 );
 			$this->assertTrue( false, 'expected MutationException' );
 		} catch ( MutationException $e ) {
 			$this->assertEquals( 'changeset.decrypt_failed', $e->errorCode() );
@@ -160,9 +166,9 @@ final class OperationJournalRepositoryTest extends TestCase {
 	public function test_mark_timestamp_records_a_recognized_column(): void {
 		$op = new OptionUpdateOperation( 'aios_journal_ts', 'v' );
 		$this->repo->create( 'cs_ts', 0, $op, 1 );
-		$this->repo->markTimestamp( 'cs_ts', $op->id(), 'apply_started_at' );
+		$this->repo->markTimestamp( 'cs_ts', 0, 'apply_started_at' );
 
-		$row = $this->repo->load( 'cs_ts', $op->id() );
+		$row = $this->repo->load( 'cs_ts', 0 );
 		$this->assertNotNull( $row['apply_started_at'] );
 	}
 
