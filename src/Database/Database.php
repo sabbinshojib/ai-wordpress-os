@@ -12,7 +12,7 @@ declare( strict_types=1 );
 
 namespace AIOS\Database;
 
-final class Database {
+final class Database implements DatabaseInterface {
 
         public const TABLE_AUDIT_LOGS        = 'audit_logs';
         public const TABLE_TOOL_EXECUTIONS   = 'tool_executions';

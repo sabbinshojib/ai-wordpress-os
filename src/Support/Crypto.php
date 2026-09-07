@@ -55,7 +55,7 @@ declare( strict_types=1 );
 
 namespace AIOS\Support;
 
-final class Crypto {
+final class Crypto implements CryptoInterface {
 
         /**
          * Envelope format version (metadata only — not a secret).

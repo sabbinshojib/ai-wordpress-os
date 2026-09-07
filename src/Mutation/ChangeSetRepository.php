@@ -36,15 +36,25 @@ declare( strict_types=1 );
 namespace AIOS\Mutation;
 
 use AIOS\Database\Database;
-use AIOS\Support\Crypto;
+use AIOS\Database\DatabaseInterface;
+use AIOS\Support\CryptoInterface;
 
 final class ChangeSetRepository {
 
 	private const LEASE_DEFAULT_TTL_SECONDS = 300;
 
+	/**
+	 * Typed against the interfaces, not the concrete Database/Crypto —
+	 * every real (production) caller still passes the real classes;
+	 * this is what lets a test substitute a deterministic
+	 * fault-injecting collaborator (tests/Support/FaultInjectingDatabase.php,
+	 * tests/Support/FaultInjectingCrypto.php) for repository
+	 * fault-injection coverage without any production code path
+	 * changing.
+	 */
 	public function __construct(
-		private readonly Database $db,
-		private readonly Crypto $crypto,
+		private readonly DatabaseInterface $db,
+		private readonly CryptoInterface $crypto,
 		private readonly OperationJournalRepository $journal
 	) {}
 

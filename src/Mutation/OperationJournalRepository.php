@@ -21,13 +21,18 @@ declare( strict_types=1 );
 namespace AIOS\Mutation;
 
 use AIOS\Database\Database;
-use AIOS\Support\Crypto;
+use AIOS\Database\DatabaseInterface;
+use AIOS\Support\CryptoInterface;
 
 final class OperationJournalRepository {
 
+	/**
+	 * Typed against the interfaces, not the concrete Database/Crypto —
+	 * see ChangeSetRepository's constructor docblock for why.
+	 */
 	public function __construct(
-		private readonly Database $db,
-		private readonly Crypto $crypto
+		private readonly DatabaseInterface $db,
+		private readonly CryptoInterface $crypto
 	) {}
 
 	private function table(): string {
