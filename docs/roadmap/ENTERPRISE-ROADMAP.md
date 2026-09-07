@@ -4,6 +4,8 @@
 **Source documents:** `docs/audits/ENTERPRISE-READINESS-AUDIT.md`, `docs/audits/BUG-GAP-REGISTER.md`
 **Principle:** Every sprint below is a superset dependency of the next. No sprint after 0.1 should start until the sprint before it is green and merged. **Phase 2 (Sprint 1.x onward) does not begin until Sprint 0.x is fully complete and the test suite is green under CI.**
 
+**2026-09-07 status:** Sprints 0.1 and 0.3 (renumbered in practice as "0.3A," see below) are complete on `sprint/0.3-security-ci`. Sprints 0.2 (multisite posture was actually decided/implemented early, in Sprint 0.1 — see T-009b), 0.4, 0.5, 0.7, and 0.8 remain open. **Phase 2 has not started: zero Phase 2 code exists in this repository as of this update** (no `AIOS\Mutation\*` namespace, no ChangeSet/Snapshot/Diff/Rollback classes). The stated principle above is intact — Phase 2 begins only once Sprint 0.x is fully complete and green under CI, which it is not yet (Sprints 0.4/0.5/0.7/0.8 remain open). See `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md` for the exact Sprint 0.3A scope.
+
 ---
 
 ## Sprint 0.1 — Existing-system stabilization (correctness)
@@ -33,7 +35,7 @@
 
 **Exit criteria:** Activating on a host missing a required extension produces a clear, actionable admin notice and does not proceed. Multisite network activation either works correctly on every site or is explicitly and safely refused.
 
-## Sprint 0.3 — Security hardening
+## Sprint 0.3 (0.3A) — Security hardening — **COMPLETE** (2026-09-07, `sprint/0.3-security-ci`)
 
 **Goal:** Close the Medium-severity findings from the audit before any compliance or enterprise-security claim is made.
 
@@ -46,7 +48,7 @@
 | Add key-rotation handling to `Crypto` (versioned key support, or a documented rotation runbook) before any Phase-2 feature persists encrypted data | SEC-M5 | Must land before any task in Sprint 1.x that calls `Crypto::encrypt()` for durable storage |
 | Wire `ai_os_use`/`ai_os_approve` to real, grantable roles/capabilities (admin UI to assign them) instead of capability constants nothing ever grants | ARCH-005 (partial) | — |
 
-**Exit criteria:** All Medium findings in `BUG-GAP-REGISTER.md` are either fixed or explicitly, permanently downgraded with a documented rationale in `docs/SECURITY.md`.
+**Exit criteria:** All Medium findings in `BUG-GAP-REGISTER.md` are either fixed or explicitly, permanently downgraded with a documented rationale in `docs/SECURITY.md`. — **Met.** SEC-M1..M5 and the ARCH-005 remainder are all `RESOLVED` (see `BUG-GAP-REGISTER.md`). T-026/T-027/T-028 (CI workflow, PHPCS, PHPStan config) were pulled forward from Sprint 0.6 into this sprint as well, since a from-scratch CI foundation was in scope for this pass.
 
 ## Sprint 0.4 — Database/migration hardening
 
@@ -82,9 +84,9 @@
 
 | Task | Addresses | Depends on |
 |---|---|---|
-| Add `.github/workflows/ci.yml` (or equivalent) running: `composer install`, `php -l` lint, `tests/run.php`, `vendor/bin/phpunit` | REL-001 | Sprint 0.1 (PHPUnit must actually run) |
-| Add PHPCS + WordPress Coding Standards config, run in CI | REL-002 | — |
-| Add PHPStan config at a pragmatic starting level, run in CI (non-blocking initially if the baseline is noisy, then ratchet) | REL-002 | — |
+| Add `.github/workflows/ci.yml` (or equivalent) running: `composer install`, `php -l` lint, `tests/run.php`, `vendor/bin/phpunit` | REL-001 | **DONE, pulled forward into Sprint 0.3A** (`8efb2de`) — Sprint 0.1 (PHPUnit must actually run) |
+| Add PHPCS + WordPress Coding Standards config, run in CI | REL-002 | **DONE, pulled forward into Sprint 0.3A** (`8efb2de`) |
+| Add PHPStan config at a pragmatic starting level, run in CI (non-blocking initially if the baseline is noisy, then ratchet) | REL-002 | **DONE, pulled forward into Sprint 0.3A** (`8efb2de`) — level 5, no baseline-suppression file; first real CI run establishes the true starting point |
 | Add `composer audit` to CI | REL-003 | Requires `composer.lock` to exist (i.e., `composer install` run at least once) |
 | Add `npm audit` + a JS build-reproducibility check (rebuild `admin-dashboard.js`, diff against committed artifact) to CI | REL-003, REL-004, LIKELY-003 | Requires a JS lockfile |
 | Commit `composer.lock` and a JS lockfile | ENV-003, ENV-004 | — |
@@ -123,6 +125,8 @@
 ## Phase 2+ (only after Sprint 0.x is fully green under CI)
 
 Dependency-ordered, per the mandated sequencing:
+
+> **2026-09-07:** none of items 1–20 below have started. This list remains the target sequencing for whenever Sprint 0.x (0.4/0.5/0.7/0.8 specifically) is complete and green under CI — see the status note at the top of this document.
 
 1. **Transaction Engine** — foundational; every item below depends on it.
 2. **ChangeSet model** — depends on Transaction Engine.

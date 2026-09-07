@@ -22,6 +22,26 @@ All five confirmed BUG-00x items below are **RESOLVED**. Each fix shipped with r
 
 A sixth item — capability usability (`ai_os_use`/`ai_os_approve`, tracked under ARCH-005 below) — was also resolved this sprint in `c1fbf34` fix(capabilities), with `tests/Integration/CapabilityLifecycleTest.php` (9 cases). Full narrative in `docs/audits/SPRINT-0.1-STABILIZATION-REPORT.md`.
 
+## Sprint 0.3A resolution summary (2026-09-07, branch `sprint/0.3-security-ci`)
+
+All five SEC-M1..M5 hardening items and the remaining half of ARCH-005 (admin-grantable capability management) are now **RESOLVED**. Each fix shipped with regression tests and a coherent commit on `sprint/0.3-security-ci` (not yet merged to `main`):
+
+| Item | Commit | Tests added |
+|---|---|---|
+| SEC-M1 (rate limiter race) | `b093e84` fix(security) | Atomic DB-backed counter (`RateLimitRepository`), `RateLimiterTest` |
+| SEC-M2 (HTTPS trusts `Host` header) | `5eee086` fix(security) | `isLocalDevelopment()` no longer inspects any client-supplied header |
+| SEC-M3 (`/tools/execute` missing nonce) | `765f2e1` fix(security) | `ToolsControllerNonceTest` (6 cases) |
+| SEC-M4 (audit log has no tamper-evidence) | `f3d7aa3` feat(audit) | `AuditIntegrityTest` (22 cases) + `AuditChainTest` |
+| SEC-M5 (`Crypto` has no key-rotation strategy) | `3f4e246` fix(crypto) | `CryptoTest` (31 cases: envelope parsing, malformed/unsupported-version/wrong-key/tamper/auth-failure, legacy detection, previous-key decrypt, re-encrypt, no-leak assertions, sodium/openssl paths) |
+| ARCH-005 remainder (admin-grantable `ai_os_approve`/`ai_os_use`) | `ea452db` feat(security) | `CapabilityManagementTest` (21 cases: grant/revoke, no self-escalation, unauthorized-caller rejection, approval-gate consequence, audit, multisite isolation, REST surface) |
+| REL-001/REL-002 (no CI, no static analysis config) | `8efb2de` build(ci) | Composer scripts (`stan`, `cs`, `test:phpunit`, `ci`), `phpstan.neon.dist`, `phpcs.xml.dist`, `.github/workflows/ci.yml` (PHP 8.2/8.3 required matrix + PHP 8.4 best-effort job + static-analysis job) |
+
+**Important scope note on SEC-M4:** the audit chain adds tamper-*evidence*, not tamper-*immutability* — rows remain physically mutable at the database layer (this codebase has no append-only/WORM storage layer). What SEC-M4 guarantees is that any row edited or deleted out from under the hash chain becomes *detectable* by `AuditLogger::verifyIntegrity()` / `wp ai-os audit verify`, not that such an edit is prevented. Do not represent this as "immutable audit logs" in any customer-facing material.
+
+**Important scope note on CI (REL-001/REL-002):** `composer install`, `phpstan`, and `phpcs` could not be executed in the authoring sandbox (no `composer` binary, no `vendor/`, no network access). The configs were validated structurally only (JSON/XML/YAML well-formedness, no tabs). The native WP-like suite and acceptance suite were re-verified green on PHP 8.2/8.3 after every change. **The first real GitHub Actions run of the `static-analysis` job is the true baseline** — treat any findings it reports as new work, not as a regression, since this codebase has never been statically analyzed before.
+
+Full narrative: `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md`.
+
 ## Confirmed bugs
 
 | ID | Severity | Subsystem | File(s) | Line(s) | Problem | Impact | Root cause | Evidence | Recommended fix | Tests required | Dependency | Safe for Sprint 0.1? | **Status** |
@@ -44,19 +64,19 @@ A sixth item — capability usability (`ai_os_use`/`ai_os_approve`, tracked unde
 
 See `docs/audits/ENTERPRISE-READINESS-AUDIT.md` §13 for the full classified list (C-1, C-2 = BUG-001/BUG-002 above; H-1..H-3 = BUG-003/BUG-004/BUG-005 above; M-1..M-5 and L-1..L-4 are additional findings not risen to "bug" status — summarized here for completeness):
 
-| ID | Severity | One-line summary |
-|---|---|---|
-| SEC-M1 | Medium | Rate limiter non-atomic under concurrency (= LIKELY-002). |
-| SEC-M2 | Medium | HTTPS bypass trusts client `Host` header (= LIKELY-001). |
-| SEC-M3 | Medium | `/tools/execute` is the only mutating REST endpoint without a defense-in-depth nonce check (core cookie-auth nonce enforcement still applies first). |
-| SEC-M4 | Medium | Audit log has no tamper-evidence (no hash chain / append-only enforcement). |
-| SEC-M5 | Medium | `Crypto`'s environment-derived key has no rotation strategy; rotating `AUTH_KEY`/`AUTH_SALT` silently breaks decryption of anything encrypted under the old key (latent — no current call site persists `Crypto`-encrypted data yet). |
-| SEC-L1 | Low | `Container::has()`/`get()` inconsistency for uninstantiable classes. |
-| SEC-L2 | Low | `ApiKeyRepository::revoke()` fetches up to 500 rows to find one by id. |
-| SEC-L3 | Low | Escalation blocklist has zero live test coverage (targets tools that don't exist yet). |
-| SEC-L4 | Low | `PathGuard` allows reading `.php` files by design — confirmed intentional, flagged for re-confirmation before any Phase-2 write engine ships. |
+| ID | Severity | One-line summary | **Status** |
+|---|---|---|---|
+| SEC-M1 | Medium | Rate limiter non-atomic under concurrency (= LIKELY-002). | **RESOLVED** — commit `b093e84`. Replaced the transient read-increment-write with an atomic database-backed counter (`RateLimitRepository`, `INSERT ... ON DUPLICATE KEY UPDATE`-style single statement); holds under concurrent `allow()` calls for the same principal. |
+| SEC-M2 | Medium | HTTPS bypass trusts client `Host` header (= LIKELY-001). | **RESOLVED** — commit `5eee086`. `isLocalDevelopment()` no longer inspects `HTTP_HOST`/any client-supplied header; the local-development exemption now derives solely from `wp_get_environment_type()` (a server-side, non-client-controlled signal). |
+| SEC-M3 | Medium | `/tools/execute` is the only mutating REST endpoint without a defense-in-depth nonce check (core cookie-auth nonce enforcement still applies first). | **RESOLVED** — commit `765f2e1`. `ToolsController::execute()` now calls `verifyNonce()`, matching `ApprovalsController`/`SettingsController`/`KeysController`. 6 `ToolsControllerNonceTest` cases cover cookie/application-password/API-key/unauthenticated paths. |
+| SEC-M4 | Medium | Audit log has no tamper-evidence (no hash chain / append-only enforcement). | **RESOLVED** — commit `f3d7aa3`. Added `AIOS\Audit\AuditIntegrity`: each row is HMAC-SHA256-chained to its predecessor (key domain-separated from `Crypto`'s). This is tamper-*evidence*, not tamper-*immutability* — rows are still physically mutable at the DB layer; a tampered/deleted row becomes *detectable* via `verifyIntegrity()`, not prevented. 22 `AuditIntegrityTest` cases + `AuditChainTest`. |
+| SEC-M5 | Medium | `Crypto`'s environment-derived key has no rotation strategy; rotating `AUTH_KEY`/`AUTH_SALT` silently breaks decryption of anything encrypted under the old key (latent — no current call site persists `Crypto`-encrypted data yet). | **RESOLVED** — commit `3f4e246`. Replaced the single-byte-version wire format with an explicit, parseable envelope (`aios{ver}:{backend}:{key_version}:{base64}`, non-secret metadata only). Adds current/previous key-version support, explicit failure codes (malformed/unsupported-version/unknown-key-version/auth-failed), safe legacy-ciphertext detection + decrypt (flagged, never silently accepted), and `reencrypt()` for migrating ciphertext to the current key version without the caller ever handling plaintext. 31 `CryptoTest` cases. Still latent in the sense that no call site persists `Crypto`-encrypted data yet — the rotation mechanism is now ready for whenever one does. |
+| SEC-L1 | Low | `Container::has()`/`get()` inconsistency for uninstantiable classes. | OPEN — not in Sprint 0.3A scope. |
+| SEC-L2 | Low | `ApiKeyRepository::revoke()` fetches up to 500 rows to find one by id. | OPEN — tracked as T-020, Sprint 0.4. |
+| SEC-L3 | Low | Escalation blocklist has zero live test coverage (targets tools that don't exist yet). | OPEN — not in Sprint 0.3A scope. |
+| SEC-L4 | Low | `PathGuard` allows reading `.php` files by design — confirmed intentional, flagged for re-confirmation before any Phase-2 write engine ships. | OPEN — re-confirm before Phase 2 mutation engine writes to `.php` files. |
 
-None of SEC-M1..M5 or SEC-L1..L4 were in Sprint 0.1's scope (they are explicitly Sprint 0.3 hardening items) and none were touched — all still `OPEN`, unchanged from the original audit. Sprint 0.1's security regression pass (see the stabilization report) re-confirmed none of these were made worse and no new instance of any of them was introduced by the BUG-001..005 fixes.
+SEC-M1..M5 were Sprint 0.3 hardening items, out of scope for Sprint 0.1 — Sprint 0.1's security regression pass confirmed none were made worse by the BUG-001..005 fixes. All five are now `RESOLVED` as of Sprint 0.3A (2026-09-07, see the resolution summary above). SEC-L1..L4 remain `OPEN`, out of Sprint 0.3A's scope.
 
 ## Architecture gaps (expected at this phase — not bugs)
 
@@ -66,7 +86,7 @@ None of SEC-M1..M5 or SEC-L1..L4 were in Sprint 0.1's scope (they are explicitly
 | ARCH-002 | No Snapshot/Diff/Rollback engine | Same as above; depends on ARCH-001. |
 | ARCH-003 | No background job / async execution system | All tool execution today is synchronous within the HTTP request; acceptable at current tool complexity, will not scale to long-running Phase-2 operations (large content migrations, staging syncs). |
 | ARCH-004 | No idempotency-key / replay protection for MCP `tools/call` | A retried mutating call (e.g., after a client timeout) can double-execute. Documented as a Phase-2-adjacent hardening item, not blocking Phase 1's own correctness. |
-| ARCH-005 | **PARTIALLY RESOLVED** (commit `c1fbf34`) — No RBAC/team support beyond raw WordPress capabilities | `ai_os_use`/`ai_os_approve` are now genuinely granted to the `administrator` role at activation (`Activator::grantDefaultCapabilities()`), removed on opt-in uninstall, and covered by 9 `CapabilityLifecycleTest` cases — the "permanently-dead constant" defect is fixed. What remains open (full Sprint 0.3/Phase-2 scope, tracked as roadmap T-015): an admin UI or API for granting `ai_os_approve` to a non-administrator user/role. Real multi-approver workflows still need that. |
+| ARCH-005 | **RESOLVED** (role default: commit `c1fbf34`; admin-grantable layer: commit `ea452db`) — No RBAC/team support beyond raw WordPress capabilities | `ai_os_use`/`ai_os_approve` are granted to the `administrator` role at activation (unchanged from Sprint 0.1). Sprint 0.3A adds `AIOS\Security\CapabilityManager`: a conservative, whitelist-only (these two capabilities, nothing else) admin-controlled grant/revoke layer for individual non-administrator users, via real `WP_User::add_cap()`/`remove_cap()` (per-site, multisite-safe) — no self-escalation, unauthorized callers refused, every change audited. REST surface: `GET /capabilities/{id}`, `POST /capabilities/grant`, `POST /capabilities/revoke`. 21 `CapabilityManagementTest` cases, including "an explicitly granted non-admin approver passes the real approval gate; an equivalent ungranted user does not." This is still deliberately NOT a general RBAC system (no custom roles, no capability inheritance, no team/group model) — see the Phase 2+ roadmap for that. |
 | ARCH-006 | No versioned API contract / deprecation strategy for the REST or MCP surfaces | Fine for a v1.0.0 baseline; becomes necessary the moment a breaking change is needed post-release. |
 | ARCH-007 | No feature-flag system | All behavior is controlled by the single `Settings` mode/threshold model; adequate for Phase 1's scope. |
 
@@ -96,12 +116,12 @@ None of SEC-M1..M5 or SEC-L1..L4 were in Sprint 0.1's scope (they are explicitly
 
 ## Release gaps
 
-| ID | Gap |
-|---|---|
-| REL-001 | No CI configuration of any kind (`.github/workflows/` absent). |
-| REL-002 | No static analysis configuration (`phpstan.neon*`, `phpcs.xml*` both absent). |
-| REL-003 | No dependency-audit tooling (`composer audit`/`npm audit` not wired into any script; no lockfiles to audit against in the first place). |
-| REL-004 | No build-reproducibility check for the shipped JS bundle (see LIKELY-003). |
+| ID | Gap | Status |
+|---|---|---|
+| REL-001 | No CI configuration of any kind (`.github/workflows/` absent). | **RESOLVED** — commit `8efb2de`. `.github/workflows/ci.yml`: PHP 8.2/8.3 required matrix (lint, native suite, PHPUnit bridge, acceptance) + PHP 8.4 best-effort job + static-analysis job. Not yet executed against a real GitHub Actions runner as of this sprint (see the CI scope note above). |
+| REL-002 | No static analysis configuration (`phpstan.neon*`, `phpcs.xml*` both absent). | **RESOLVED** — commit `8efb2de`. `phpstan.neon.dist` (level 5, WordPress-aware via `szepeviktor/phpstan-wordpress` + `php-stubs/wordpress-stubs`, scoped to `src/`) and `phpcs.xml.dist` (WordPress-Extra, one structural exclusion for this Composer/PSR-4 codebase's file naming). Neither has been run yet in this sandbox (no composer/network) — first CI run establishes the real baseline. |
+| REL-003 | No dependency-audit tooling (`composer audit`/`npm audit` not wired into any script; no lockfiles to audit against in the first place). | OPEN — tracked as T-029/T-030, Sprint 0.6. Not in Sprint 0.3A scope. |
+| REL-004 | No build-reproducibility check for the shipped JS bundle (see LIKELY-003). | OPEN — tracked as T-030, Sprint 0.6. Not in Sprint 0.3A scope. |
 
 ## Future features (explicitly out of scope for stabilization — tracked for Phase 2+)
 

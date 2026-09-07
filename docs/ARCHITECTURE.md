@@ -2,7 +2,9 @@
 
 > Phase 1 Foundation — design document. This file describes the architecture that is
 > **implemented** in this release. Anything marked `Phase 2+` is designed-for but not
-> implemented yet (interfaces/slots exist, no fake UI and no dead buttons).
+> implemented yet (interfaces/slots exist, no fake UI and no dead buttons). §13 records
+> the target Phase 2 mutation pipeline's design — as of 2026-09-07 it is **design only,
+> zero code written** (no `AIOS\Mutation\*` namespace exists in this repository yet).
 
 ## 1. Product shape
 
@@ -81,7 +83,9 @@ ai-wordpress-os/
 │   │   ├── Sanitize.php         # WP-aware sanitization helpers
 │   │   ├── StructuredError.php  # {code, message, type, retryable, context} envelopes
 │   │   ├── Diff.php               # Unified line diff (for Phase 2 snapshots + admin previews)
-│   │   └── Crypto.php           # AES-256-GCM secret encryption (sodium if present, openssl fallback)
+│   │   └── Crypto.php           # Versioned-envelope secret encryption (sodium preferred, AES-256-GCM/openssl
+│   │                            #     fallback); current/previous key-version rotation, legacy-ciphertext
+│   │                            #     detection + reencrypt() (SEC-M5)
 │   ├── Settings/Settings.php    # Typed settings model + mode presets
 │   ├── Database/
 │   │   ├── Database.php         # wpdb wrapper + table prefixing
@@ -94,9 +98,13 @@ ai-wordpress-os/
 │   │   ├── PathGuard.php        # Canonicalization, traversal blocking, protected files
 │   │   ├── Authenticator.php    # Application Passwords (native) + AI OS API keys
 │   │   ├── ApiKeyManager.php    # Issue/rotate/revoke; hashed at rest
-│   │   ├── RateLimiter.php      # Per-principal rolling window
+│   │   ├── RateLimiter.php      # Per-principal rolling window (atomic, DB-backed)
+│   │   ├── CapabilityManager.php # Admin-controlled, whitelist-only grant/revoke of
+│   │   │                        #     ai_os_use/ai_os_approve per user; no self-escalation, audited
 │   │   └── PromptHygiene.php    # Marks untrusted site content in tool output
-│   ├── Audit/AuditLogger.php    # Append entries, secret redaction, filtering
+│   ├── Audit/
+│   │   ├── AuditLogger.php      # Append entries, secret redaction, filtering
+│   │   └── AuditIntegrity.php   # HMAC hash-chain verification (tamper-evidence, not immutability)
 │   ├── Abilities/
 │   │   ├── Ability.php          # DTO
 │   │   ├── AbilityResult.php    # Success/error envelope
@@ -120,7 +128,7 @@ ai-wordpress-os/
 │   │   └── Transports/RestTransport.php  # Stateless Streamable HTTP endpoint
 │   ├── Rest/
 │   │   ├── RestApi.php
-│   │   └── Controllers/         # Site, Tools, Approvals, Logs, Context, Settings, Mcp
+│   │   └── Controllers/         # Site, Tools, Approvals, Logs, Context, Settings, Keys, Capabilities, Mcp
 │   ├── Logging/DebugLog.php     # Internal debug logger (WP debug log integration)
 │   └── Admin/
 │       ├── AdminPages.php       # Menu, screen registration, asset pipeline
@@ -141,7 +149,7 @@ version stored in `wp_options:ai_os_db_version`.
 
 | Table | Columns (abridged) | Purpose |
 |---|---|---|
-| `audit_logs` | `id BIGINT PK, occurred_at DATETIME, user_id BIGINT, client VARCHAR(64), principal_type VARCHAR(20), tool VARCHAR(190), action VARCHAR(190), args_hash CHAR(64), args_json LONGTEXT, risk TINYINT, status VARCHAR(20), error TEXT, affected_objects LONGTEXT, affected_files LONGTEXT, approval_id BIGINT, rollback_id BIGINT NULL, duration_ms INT, ip VARBINARY(16)` | Immutable-ish audit trail (append + soft filters). Indexes: `(occurred_at)`, `(user_id)`, `(tool)`, `(status)`, `(risk)`. |
+| `audit_logs` | `id BIGINT PK, occurred_at DATETIME, user_id BIGINT, client VARCHAR(64), principal_type VARCHAR(20), tool VARCHAR(190), action VARCHAR(190), args_hash CHAR(64), args_json LONGTEXT, risk TINYINT, status VARCHAR(20), error TEXT, affected_objects LONGTEXT, affected_files LONGTEXT, approval_id BIGINT, rollback_id BIGINT NULL, duration_ms INT, ip VARBINARY(16), integrity_version TINYINT NULL, chain_seq BIGINT NULL, prev_hash CHAR(64) NULL, record_hash CHAR(64) NULL` | Append-mostly audit trail. The last four columns (added by migration `202509060002`, SEC-M4) are a **tamper-evidence** chain (`AIOS\Audit\AuditIntegrity`, HMAC-SHA256 per row over its own redacted content + the predecessor's `record_hash` + `chain_seq`) — this makes tampering *detectable*, not *prevented*: the table is not append-only/WORM at the storage layer, and rows written before this migration have all four columns `NULL` (reported as `legacy`, never silently treated as verified). Indexes: `(occurred_at)`, `(user_id)`, `(tool)`, `(status)`, `(risk)`, `(chain_seq)`. |
 | `tool_executions` | `id, occurred_at, tool, user_id, client, success TINYINT, duration_ms, error_code VARCHAR(120)` | Observability aggregates (usage stats, error rates). Indexes: `(tool, occurred_at)`, `(success)`. |
 | `approvals` | `id, created_at, expires_at, user_id, client, tool, args_json LONGTEXT, risk TINYINT, reason TEXT, status ENUM-ish VARCHAR(20) pending/approved/rejected/expired, decided_by BIGINT NULL, decided_at DATETIME NULL, execution_status VARCHAR(20), execution_result LONGTEXT, execution_log_id BIGINT` | Approval queue. Indexes: `(status)`, `(risk, status)`. |
 | `api_keys` | `id, created_at, label VARCHAR(190), key_prefix VARCHAR(12), key_hash CHAR(64), user_id BIGINT, capabilities LONGTEXT (JSON array), max_level TINYINT, last_used_at DATETIME NULL, last_ip VARBINARY(16) NULL, revoked_at DATETIME NULL, expires_at DATETIME NULL` | AI OS API keys. Lookup by SHA-256 of presented key; `key_prefix` for UI identification. Index: `(key_hash)`. |
@@ -194,9 +202,11 @@ Secrets are never returned by tools; `AuditLogger` + `FileReader` redact secret-
 - **SQL injection**: all queries through `$wpdb->prepare`; repositories only.
 - **CSRF**: nonce verification on all state-changing admin/REST endpoints.
 - **Prompt injection**: site content returned by tools is wrapped in clearly delimited untrusted blocks by `PromptHygiene`; tool output never alters permissions.
-- **Secret exposure**: `wp-config.php`, `.env`, `.htaccess`, salts, API keys — protected list + regex redaction in logs.
+- **Secret exposure**: `wp-config.php`, `.env`, `.htaccess`, salts, API keys — protected list + regex redaction in logs. `Crypto`'s error paths never include plaintext or key material in exception messages (SEC-M5).
 - **SSRF / command injection**: Phase 1 has **no** outbound-fetching or shell-executing tools. WP-CLI shell execution ships in Phase 2 behind an allowlist, never by default.
-- **Rate limiting**: rolling window per principal (default 120 MCP calls/min, 60 tool executions/min) via transients.
+- **Rate limiting**: per-principal window, backed by an atomic DB counter (`RateLimitRepository`, SEC-M1 — not a non-atomic transient read-increment-write) — default 120 MCP calls/min, 60 tool executions/min.
+- **Audit tamper-evidence**: every audit row is HMAC-SHA256-chained to its predecessor (SEC-M4, `AuditIntegrity`). This detects tampering after the fact; it does not make the table append-only or immutable at the storage layer — do not describe the audit log as "immutable" in any external-facing material.
+- **Key rotation**: `Crypto` ciphertext carries an explicit, non-secret envelope (format version, backend, key version). Rotating the underlying key registers the old key as "previous" so already-encrypted values keep decrypting, and `reencrypt()` migrates them to the current key version without the caller ever handling plaintext directly (SEC-M5).
 
 ## 6. MCP architecture
 
@@ -290,6 +300,9 @@ Namespace `ai-os/v1`. All endpoints: permission callback, args validation + sani
 | `/logs` | GET (filters) | `ai_os_read` |
 | `/settings` | GET/POST | `manage_options` + nonce |
 | `/keys` | GET/POST/DELETE | `manage_options` + nonce (API key lifecycle) |
+| `/capabilities/(?P<user_id>\d+)` | GET | `manage_options` (current `ai_os_use`/`ai_os_approve` grant state) |
+| `/capabilities/grant` | POST | `manage_options` + nonce (whitelist-only; no self-escalation) |
+| `/capabilities/revoke` | POST | `manage_options` + nonce |
 | `/status` | GET | `ai_os_read` (dashboard health card) |
 
 ## 10. Extensibility API
@@ -316,3 +329,47 @@ Namespace `ai-os/v1`. All endpoints: permission callback, args validation + sani
 - **Phase 4** (Advanced AI OS): multi-agent orchestration, visual browser service, external sandbox providers, external MCP client, Figma import, deployment engine.
 
 Each later phase lands as additional migrations + modules behind the same executor/permission/audit pipeline.
+
+## 13. Phase 2 mutation pipeline (hard workflow, design target — not yet implemented)
+
+Every Phase 2+ mutation — anything that changes site state beyond what Phase 1's tool
+catalog already covers (content/media CRUD) — is required to pass through this exact
+sequence. No step may be skipped, reordered, or bypassed by a shortcut path:
+
+```
+User Request
+  → Planner     (turns a request into a typed ChangeSet — no free-form code/shell/SQL)
+  → Policy      (PermissionEngine-equivalent check: is this ChangeSet allowed at all,
+                 for this principal, before anything touches disk or the DB)
+  → Snapshot    (capture pre-state for every target the ChangeSet will touch)
+  → ChangeSet   (the reviewable, typed unit of change — see AIOS\Mutation\ChangeSet)
+  → Diff        (human-readable before/after, computed from the Snapshot + ChangeSet)
+  → Approval    (reuses the existing approval-queue model, ChangeSet-aware)
+  → Apply       (execute each ChangeOperation; Policy checked per-operation, not just
+                 per-ChangeSet)
+  → Verify      (assert the mutation had its intended — and only its intended — effect)
+  → Audit       (AuditLogger, same tamper-evidence chain as every other action)
+  → Rollback    (RollbackRecord derived from the Snapshot; available on Verify failure
+                 or explicit operator request)
+```
+
+**Status (2026-09-07): design only. Zero code exists.** No `AIOS\Mutation\*` namespace,
+no `ChangeSet`/`ChangeOperation`/`Snapshot`/`Diff`/`VerificationResult`/`RollbackRecord`
+class, and no safe-operation-type implementation (create/patch/delete file, option
+update, post/content update, reversible metadata update) exist anywhere in this
+repository as of Sprint 0.3A. This section records the *target* design — reusing Phase
+1's own `PermissionEngine` (Policy), `ApprovalRepository` (Approval), and `AuditLogger`
+(Audit) rather than parallel implementations — for whenever that work actually starts.
+Do not represent any Phase 2 mutation capability as implemented, foundation-stage or
+otherwise, until this section is updated alongside real, committed, tested code. The
+invariants below are requirements the eventual implementation must satisfy, not
+descriptions of anything that exists yet:
+
+- No direct AI → filesystem write, unrestricted shell, unrestricted SQL, or `eval` —
+  every mutation is a typed `ChangeOperation`, never a raw command string.
+- Policy is checked before `Apply`, not after.
+- A `Snapshot` is captured before `Apply`, for every target, unconditionally.
+- `Approval` is required per the same risk-level rules Phase 1 already uses.
+- `Audit` records every attempt, not just successes.
+- `RollbackRecord`s are generated at `Snapshot` time, before any mutation — never
+  reconstructed after the fact from partial state.

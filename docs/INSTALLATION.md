@@ -13,6 +13,8 @@
 
 No Composer, no Node.js, no Docker, no Redis, no shell access are required at runtime. The plugin is a single self-contained ZIP.
 
+**Tested PHP runtime matrix (Sprint 0.3A, 2026-09-07):** PHP 8.2 and 8.3 are both verified — full test suite green (native WP-like runner + real PHPUnit bridge). PHP 8.4 is allowed by `composer.json` (`"php": ">=8.2"`) and is expected to work, but has not actually been exercised against this codebase: the portable PHP 8.4 build used in this sprint's environment failed to start at all on the authoring machine (a Visual C++ runtime mismatch specific to that host, unrelated to the plugin itself). Treat PHP 8.4 as "should work, not yet independently verified" until a real run (local or CI) confirms it.
+
 ### Optional PHP extensions (the plugin runs and activates without these — see below for exactly what each one affects)
 
 | Extension | What it's used for | What happens without it |
@@ -39,6 +41,18 @@ Check `wp ai-os status` (below) or **AI OS → Dashboard** for a live report of 
 | 3. First site scan | Builds the structured site knowledge map agents use |
 
 You can re-run setup any time under **AI OS → Onboarding**, or change everything later in **AI OS → Settings**.
+
+### Granting a non-administrator approval rights
+
+By default, only administrators can approve sensitive/destructive AI actions (`ai_os_approve`) or use the console at all beyond WordPress's own `edit_posts`-based baseline (`ai_os_use`) — neither capability is ever granted to a lower role automatically. To let a specific non-administrator user approve actions (a second reviewer, a trusted editor), an administrator grants it to that one user explicitly:
+
+```
+POST /wp-json/ai-os/v1/capabilities/grant   { "user_id": 7, "capability": "ai_os_approve" }
+POST /wp-json/ai-os/v1/capabilities/revoke  { "user_id": 7, "capability": "ai_os_approve" }
+GET  /wp-json/ai-os/v1/capabilities/7                 # current grant state for user 7
+```
+
+Requires `manage_options` + a valid REST nonce. An administrator can never grant or revoke their own capabilities through this endpoint (self-escalation is refused outright — administrators already have every gate satisfied via `manage_options`). Every grant/revoke is audited. Only `ai_os_use` and `ai_os_approve` can be managed this way — this is a conservative, whitelist-only mechanism, not a general role/capability editor.
 
 ## Verifying the install
 
