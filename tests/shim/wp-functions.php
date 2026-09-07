@@ -584,13 +584,28 @@ function wp_trash_post( int $id ): bool {
         return false;
 }
 
+/**
+ * Matches real WordPress's actual contract: values are always stored
+ * as a list per key (update_post_meta() below wraps every value in
+ * array($value), mirroring how WP itself supports multiple values per
+ * meta key via add_post_meta()). $single=true unwraps to the first
+ * stored value (or '' if none); $single=false (default) returns the
+ * full list. A prior version of this shim returned the raw stored
+ * list even when $single was true — undetected until Sprint 0.3A's
+ * MetadataUpdateOperation exercised the true-branch through a real
+ * apply()->verify() cycle for the first time.
+ */
 function get_post_meta( int $id, string $key = '', bool $single = false ): mixed {
         $state = __shim_state();
         $meta = $state['sitecache'][ "meta_{$id}" ] ?? array();
         if ( '' === $key ) {
                 return $meta;
         }
-        return $meta[ $key ] ?? ( $single ? '' : array() );
+        if ( ! array_key_exists( $key, $meta ) ) {
+                return $single ? '' : array();
+        }
+        $values = $meta[ $key ];
+        return $single ? ( $values[0] ?? '' ) : $values;
 }
 
 function update_post_meta( int $id, string $key, mixed $value ): bool {

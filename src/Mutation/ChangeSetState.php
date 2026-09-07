@@ -42,11 +42,14 @@ final class ChangeSetState {
 	 * @var array<string, string[]>
 	 */
 	private const TRANSITIONS = array(
-		self::PLANNED           => array( self::POLICY_REJECTED, self::SNAPSHOTTED ),
+		// FAILED as a second PLANNED target covers captureSnapshot()
+		// itself throwing — there is no partial "SNAPSHOTTED" state to
+		// pass through when the snapshot step never completed at all.
+		self::PLANNED           => array( self::POLICY_REJECTED, self::SNAPSHOTTED, self::FAILED ),
 		self::SNAPSHOTTED       => array( self::DIFF_READY, self::FAILED ),
 		self::DIFF_READY        => array( self::PENDING_APPROVAL, self::APPLYING ),
-		self::PENDING_APPROVAL  => array( self::APPROVED, self::REJECTED, self::CANCELLED, self::EXPIRED ),
-		self::APPROVED          => array( self::APPLYING, self::STALE ),
+		self::PENDING_APPROVAL  => array( self::APPROVED, self::REJECTED, self::CANCELLED, self::EXPIRED, self::FAILED ),
+		self::APPROVED          => array( self::APPLYING, self::STALE, self::FAILED ),
 		self::APPLYING          => array( self::VERIFYING, self::FAILED ),
 		self::VERIFYING         => array( self::COMPLETED, self::ROLLBACK_REQUIRED ),
 		self::FAILED            => array( self::ROLLBACK_REQUIRED ),

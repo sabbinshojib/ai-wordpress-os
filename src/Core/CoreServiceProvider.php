@@ -25,6 +25,7 @@ use AIOS\Mcp\Protocol\JsonRpcRequest;
 use AIOS\Mcp\Server;
 use AIOS\Mcp\Transports\RestTransport;
 use AIOS\Mutation\ChangeSetRepository;
+use AIOS\Mutation\DurableMutationCoordinator;
 use AIOS\Mutation\MutationEngine;
 use AIOS\Rest\Controllers\ToolsController;
 use AIOS\Rest\RestApi;
@@ -112,6 +113,13 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		// would default to (SEC-M5) — no new secret-management service.
 		$container->bind( Crypto::class, static fn(): Crypto => new Crypto() );
 		$container->bind( ChangeSetRepository::class, static fn( Container $c ): ChangeSetRepository => new ChangeSetRepository( $c->get( Database::class ), $c->get( Crypto::class ) ) );
+		$container->bind(
+			DurableMutationCoordinator::class,
+			static fn( Container $c ): DurableMutationCoordinator => new DurableMutationCoordinator(
+				$c->get( ChangeSetRepository::class ),
+				$c->get( MutationEngine::class )
+			)
+		);
 
 		// Registries.
 		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );
