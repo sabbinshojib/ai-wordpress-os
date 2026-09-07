@@ -375,7 +375,7 @@ surface** — everything here is container-bindable and directly tested, nothing
 can reach it yet (verified this pass via a repository-wide grep for `DurableMutationCoordinator`/
 `OperationJournalRepository`/`MutationEngine` under `src/Rest`, `src/Mcp`, `src/Tools`: no matches).
 
-**Implemented and tested** (428 tests as of this update, PHP 8.2 and 8.3 both green,
+**Implemented and tested** (442 tests as of this update, PHP 8.2 and 8.3 both green,
 13/13 acceptance):
 - The full in-memory pipeline: Policy → Snapshot → Diff → Approval → Apply → Verify →
   Audit → Rollback, in that order, for a single synchronous request.
@@ -482,20 +482,58 @@ can reach it yet (verified this pass via a repository-wide grep for `DurableMuta
   leaves only a harmless orphaned journal row, never a journal row referencing an
   already-deleted ChangeSet.
 
+- **Repository-layer fault injection** (`tests/Support/FaultInjectingDatabase.php`,
+  `FaultInjectingCrypto.php` — never reachable from production; `ChangeSetRepository`/
+  `OperationJournalRepository` depend on `AIOS\Database\DatabaseInterface`/
+  `AIOS\Support\CryptoInterface`, which `Database`/`Crypto` implement, purely as a test
+  seam): deterministically forces an `INSERT`/`UPDATE`/encrypt/decrypt failure at an
+  exact point and proves it fails closed — no false success, no plaintext fallback, no
+  forced overwrite of a stale row, no mutation applied without its durable journal
+  record. This review found and fixed three real, previously-latent gaps rather than
+  only adding tests against already-correct code: (1) `ChangeSetRepository::create()`/
+  `OperationJournalRepository::create()` discarded `INSERT`'s return value entirely, so
+  a real insert failure fell through to a `null` return against a non-nullable `array`
+  return type (a `TypeError`, not a controlled failure) — both now throw a stable
+  `MutationException` and `DurableMutationCoordinator` converts that to a safe
+  `MutationResult`; (2) the journal event hook discarded `saveRecovery()`'s and
+  `transition()`'s boolean return values at `'snapshot_captured'`/`'apply_started'`, so
+  a real durable-write failure there was silently ignored and live WordPress state
+  would still be mutated with no durable record it was about to happen —
+  `MutationEngine::applyChangeSet()` now runs `'apply_started'` inside its existing
+  apply-failure try/catch (so a thrown journal-write failure there triggers the exact
+  same rollback-everything-already-applied path as a real `apply()` failure, not a new
+  one); (3) `MutationEngine`'s own `captureSnapshots()`/`applyChangeSet()` only catch
+  `MutationException`, so a bare `\RuntimeException` from `Crypto::encrypt()` (its own
+  documented contract) could still escape `DurableMutationCoordinator` entirely
+  uncaught — `submit()`/`resume()` now wrap every engine call and `loadChangeSet()` in
+  a `\Throwable` catch that explicitly marks the row `FAILED` rather than leaving it
+  looking untouched.
+- **Per-operation journal multisite isolation**: table-name resolution, row/recovery
+  invisibility across a `switch_to_blog()`, and the full `DurableMutationCoordinator::
+  submit()` path are all tested. This review also found (not fixed — see below) a
+  pre-existing, plugin-wide test-shim limitation: `tests/shim/wp-functions.php`'s fake
+  SQL engine cannot parse a real multisite table name for any site but the first, and
+  its row storage is keyed by table short name regardless of site — every existing
+  "multisite isolation" test in this codebase, this pass's own included, only ever
+  writes on the default site and switches purely for a read-based absence check
+  afterward, which is the only pattern the shim can actually support.
+
 **Not implemented — explicit gaps, not silently deferred:**
 - **No automatic crash-recovery continuation.** `recover()` classifies and escalates;
   it never attempts to resume a partially-applied ChangeSet or finish an interrupted
   rollback on its own. This is a deliberate scope boundary (see above), not an
   oversight — resolving a `MANUAL_RECOVERY_REQUIRED` ChangeSet today requires a human
   or a future, separately-scoped, operation-type-aware continuation engine.
-- **No repository-layer fault-injection harness** for a mid-transaction database
-  failure (an `INSERT`/`UPDATE` that fails partway through a multi-statement
-  sequence) — covered only indirectly, via the real (deterministic) tamper/wrong-key/
-  malformed-envelope/stale-CAS tests, and via `recover()`'s tests that directly force
-  a journal row into an in-flight state to model what a real crash would leave behind
-  (a real process crash cannot be induced from inside a single PHP test process).
+- **Fault injection does not cover a genuine mid-transaction failure** (an `INSERT`/
+  `UPDATE` that fails partway through a multi-statement sequence at the real MySQL
+  driver level) or `AuditLogger` write failures (it already documents itself as
+  never-throws/returns-0-on-failure; fault-injecting that would need the same
+  `DatabaseInterface` seam extended to `AuditLogRepository`, not reached this pass).
+- **The test shim cannot genuinely prove per-site WRITE isolation** for this or any
+  other table (see the multisite finding above) — only real MySQL, via the
+  CI-CONFIGURED-NOT-RUN job below, can.
 - **No real WordPress/MySQL execution — CI-CONFIGURED-NOT-RUN.** Every test above
-  (428 on both PHP 8.2 and 8.3, 13/13 acceptance) runs against this repository's own
+  (442 on both PHP 8.2 and 8.3, 13/13 acceptance) runs against this repository's own
   PHP-only WordPress shim (`tests/shim/wp-functions.php`), never a real MySQL/MariaDB
   instance or a real WordPress install — no such environment was available in the
   authoring sandbox, and system-wide MySQL/WordPress installation was explicitly out
