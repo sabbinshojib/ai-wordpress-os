@@ -120,6 +120,7 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 				$c->get( MutationEngine::class )
 			)
 		);
+		$container->bind( \AIOS\Mutation\TypedChangeSetBuilder::class, static fn(): \AIOS\Mutation\TypedChangeSetBuilder => new \AIOS\Mutation\TypedChangeSetBuilder() );
 
 		// Registries.
 		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );
@@ -239,5 +240,13 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		/** @var RateLimitRepository $rate_limits */
 		$rate_limits = $container->get( RateLimitRepository::class );
 		$rate_limits->purgeExpired();
+
+		// Terminal ChangeSets only (never pending/active/manual-recovery-
+		// required, regardless of age — see ChangeSetRepository::
+		// purgeTerminalOlderThan()). Reuses the same retention window as
+		// the audit log; batch-limited per run.
+		/** @var \AIOS\Mutation\ChangeSetRepository $change_sets */
+		$change_sets = $container->get( \AIOS\Mutation\ChangeSetRepository::class );
+		$change_sets->purgeTerminalOlderThan( $days );
 	}
 }
