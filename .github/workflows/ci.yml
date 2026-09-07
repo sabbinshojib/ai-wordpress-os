@@ -95,6 +95,106 @@ jobs:
         run: composer run acceptance
 
   # ------------------------------------------------------------------
+  # Real WordPress + real MySQL smoke test (Sprint 0.3A Phase 2 final
+  # hardening, Package P). Everything above this job runs the custom
+  # WP-like shim in tests/shim/ — deliberately, so it can run without
+  # any server dependency — which means NONE of it has ever proven
+  # this plugin's migrations (dbDelta), CAS transitions, or encrypted
+  # persistence actually work against a real wpdb/MySQL connection.
+  # This job is the one that does: it boots an ephemeral MySQL service
+  # container (never a persisted/shared database, never production),
+  # installs a throwaway WordPress core + this plugin via WP-CLI, lets
+  # activation run every real migration (including
+  # Migration_202509070001_ChangeSets and
+  # Migration_202509070002_OperationJournal) through real dbDelta
+  # against real MySQL, then runs a small `wp eval` smoke script that:
+  #   - confirms every table in AIOS\Database\Database::ALL_TABLES
+  #     exists with its expected columns,
+  #   - round-trips one ChangeSetRepository::create()/load() and one
+  #     OperationJournalRepository::create()/load() against the real
+  #     database (proves INSERT/SELECT and the encrypted-at-rest
+  #     Crypto envelope work outside the shim's fake SQL engine),
+  #   - confirms a compare-and-swap ChangeSetRepository::transition()
+  #     succeeds once and fails on a stale version, against real
+  #     MySQL row-locking semantics rather than the shim's in-memory
+  #     array.
+  #
+  # THIS WORKFLOW HAS NEVER BEEN EXECUTED. It was authored in an
+  # environment with no GitHub Actions runner and explicit instructions
+  # not to install MySQL/WordPress system-wide locally. Whether it is
+  # syntactically valid GitHub Actions YAML and whether the `wp eval`
+  # smoke script is correct WordPress/PHP is UNVERIFIED. Do not treat
+  # any claim in docs/audits/ that cites "real DB" as more than
+  # CI-CONFIGURED-NOT-RUN until an actual run of this job is observed
+  # green in the Actions tab.
+  # ------------------------------------------------------------------
+  test-real-wp-mysql:
+    name: "Real WordPress + MySQL smoke test (CI-CONFIGURED-NOT-RUN)"
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: wordpress_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, sodium, openssl, mysqli
+          coverage: none
+          tools: wp-cli
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            mysqladmin ping -h127.0.0.1 -uroot --silent && break
+            sleep 2
+          done
+
+      - name: Download WordPress core
+        run: wp core download --path=/tmp/wordpress --version=latest --locale=en_US
+
+      - name: Configure wp-config.php
+        working-directory: /tmp/wordpress
+        run: |
+          wp config create \
+            --dbname=wordpress_test --dbuser=root --dbpass= --dbhost=127.0.0.1 \
+            --path=/tmp/wordpress --skip-check
+
+      - name: Install WordPress
+        working-directory: /tmp/wordpress
+        run: |
+          wp core install \
+            --url=http://localhost --title="AIOS CI" \
+            --admin_user=admin --admin_password=admin --admin_email=admin@example.test \
+            --path=/tmp/wordpress
+
+      - name: Link this plugin into the throwaway install
+        run: |
+          rm -rf /tmp/wordpress/wp-content/plugins/ai-wordpress-os
+          cp -r "${GITHUB_WORKSPACE}" /tmp/wordpress/wp-content/plugins/ai-wordpress-os
+
+      - name: Activate plugin (runs every real migration via dbDelta)
+        working-directory: /tmp/wordpress
+        run: wp plugin activate ai-wordpress-os --path=/tmp/wordpress
+
+      - name: Real-database smoke checks (tables, CRUD, CAS — see job docblock)
+        working-directory: /tmp/wordpress
+        run: wp eval-file wp-content/plugins/ai-wordpress-os/tools/ci/real-db-smoke.php --path=/tmp/wordpress
+
+  # ------------------------------------------------------------------
   # Static analysis: PHPStan (WordPress-aware via phpstan-wordpress +
   # wordpress-stubs) and PHPCS (WordPress-Extra). See phpstan.neon.dist
   # and phpcs.xml.dist for the honest-baseline rationale — this job is
