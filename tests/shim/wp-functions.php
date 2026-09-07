@@ -598,6 +598,11 @@ function update_post_meta( int $id, string $key, mixed $value ): bool {
         return true;
 }
 
+function delete_post_meta( int $id, string $key ): bool {
+        unset( $GLOBALS['__wp_shim']['sitecache'][ "meta_{$id}" ][ $key ] );
+        return true;
+}
+
 function get_permalink( int|WP_Post $post ): string|false {
         $id = $post instanceof WP_Post ? $post->ID : $post;
         return isset( $GLOBALS['__wp_shim']['posts'][ $id ] ) ? 'https://example.test/?p=' . $id : false;

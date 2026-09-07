@@ -24,6 +24,7 @@ use AIOS\Database\Repositories\ToolExecutionRepository;
 use AIOS\Mcp\Protocol\JsonRpcRequest;
 use AIOS\Mcp\Server;
 use AIOS\Mcp\Transports\RestTransport;
+use AIOS\Mutation\MutationEngine;
 use AIOS\Rest\Controllers\ToolsController;
 use AIOS\Rest\RestApi;
 use AIOS\Security\ApiKeyManager;
@@ -90,6 +91,19 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 
 		// Capability grant/revoke (depends on AuditLogger; bound after it above).
 		$container->bind( CapabilityManager::class, static fn( Container $c ): CapabilityManager => new CapabilityManager( $c->get( AuditLogger::class ) ) );
+
+		// Phase 2 mutation pipeline foundation (docs/ARCHITECTURE.md §13).
+		// Bound here so it is resolvable/testable via the container like
+		// every other service, but NOT registered with RestApi, ToolRegistry,
+		// or the MCP server — nothing wires an AI-facing caller to it yet.
+		$container->bind(
+			MutationEngine::class,
+			static fn( Container $c ): MutationEngine => new MutationEngine(
+				$c->get( PermissionEngine::class ),
+				$c->get( ApprovalRepository::class ),
+				$c->get( AuditLogger::class )
+			)
+		);
 
 		// Registries.
 		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );

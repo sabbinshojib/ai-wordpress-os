@@ -219,6 +219,86 @@ final class PathGuard {
                 return $this->root;
         }
 
+        /**
+         * Validate and resolve a path for WRITE access (Phase 2:
+         * create/patch/delete). Unlike resolveRead(), the target need not
+         * already exist. Every check resolveRead() applies (traversal,
+         * root confinement, protected list, extension allowlist) still
+         * applies here, plus an ancestor-directory realpath re-check: the
+         * nearest EXISTING directory in the target's path is resolved and
+         * re-confined, so a symlinked parent directory cannot be used to
+         * pivot a new file outside root even though the file itself does
+         * not exist yet to realpath() directly. If the target already
+         * exists, the same post-realpath symlink re-check resolveRead()
+         * uses is also applied to it directly.
+         *
+         * @return string Absolute (NOT realpath-resolved unless the file
+         *                already exists) path — callers must not assume
+         *                symlinks are already resolved for a brand-new file.
+         *
+         * @throws PathGuardException When the path is invalid, escaping,
+         *                            protected, or the extension is not allowed.
+         */
+        public function resolveWrite( string $path ): string {
+                $absolute = $this->toAbsolute( $path );
+
+                if ( $this->looksLikeTraversal( $absolute ) ) {
+                        throw new PathGuardException( 'Path traversal is not allowed.', PathGuardException::E_TRAVERSAL );
+                }
+                if ( ! $this->isInsideRoot( $absolute ) ) {
+                        throw new PathGuardException( 'Path is outside the WordPress installation.', PathGuardException::E_OUTSIDE_ROOT );
+                }
+                if ( $this->isProtected( $absolute ) ) {
+                        throw new PathGuardException( 'This path is protected by the AI OS security policy.', PathGuardException::E_PROTECTED );
+                }
+                if ( ! $this->isAllowedExtension( $absolute ) ) {
+                        throw new PathGuardException( 'File type is not allowed for mutation.', PathGuardException::E_EXTENSION );
+                }
+
+                $this->assertAncestorConfined( $absolute );
+
+                if ( file_exists( $absolute ) ) {
+                        $real = realpath( $absolute );
+                        if ( false !== $real ) {
+                                if ( ! $this->pathStartsWith( $this->normalizeSlashes( $real ), $this->root ) ) {
+                                        throw new PathGuardException( 'Resolved path escapes the WordPress installation.', PathGuardException::E_OUTSIDE_ROOT );
+                                }
+                                if ( $this->isProtected( $real ) ) {
+                                        throw new PathGuardException( 'This path is protected by the AI OS security policy.', PathGuardException::E_PROTECTED );
+                                }
+                        }
+                }
+
+                return $absolute;
+        }
+
+        /**
+         * Walk up from a (possibly not-yet-existing) path to the nearest
+         * ancestor directory that DOES exist, realpath() it, and confirm
+         * it is still inside root. Catches a symlinked parent directory
+         * escaping root before any write is attempted.
+         */
+        private function assertAncestorConfined( string $absolute ): void {
+                $probe = dirname( $absolute );
+                $guard = 0;
+                while ( ! is_dir( $probe ) && 64 > $guard ) {
+                        $parent = dirname( $probe );
+                        if ( $parent === $probe ) {
+                                return; // Reached filesystem root without finding an existing dir.
+                        }
+                        $probe = $parent;
+                        $guard++;
+                }
+
+                $real = realpath( $probe );
+                if ( false === $real ) {
+                        return; // Nothing resolvable to re-check yet.
+                }
+                if ( ! $this->pathStartsWith( $this->normalizeSlashes( $real ) . '/', $this->root ) ) {
+                        throw new PathGuardException( 'Resolved path escapes the WordPress installation.', PathGuardException::E_OUTSIDE_ROOT );
+                }
+        }
+
         // ---------------------------------------------------------------- internals
 
         private function assertReadable( string $absolute ): string {
