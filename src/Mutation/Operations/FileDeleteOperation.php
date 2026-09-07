@@ -106,4 +106,8 @@ final class FileDeleteOperation extends AbstractOperation {
 	public function intendedValue(): null {
 		return null; // Deletion has no "new content" — the diff represents this as pure removal.
 	}
+
+	public function toSpec(): array {
+		return array( 'path' => $this->path );
+	}
 }

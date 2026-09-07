@@ -128,4 +128,17 @@ interface ChangeOperationInterface {
 	 * redacting secret-shaped values before anything is stored/logged.
 	 */
 	public function intendedValue(): mixed;
+
+	/**
+	 * Full reconstruction data for this operation — everything its own
+	 * constructor needs, which MAY include secret-shaped content. Used
+	 * only by AIOS\Mutation\OperationRegistry to build the ENCRYPTED
+	 * durable payload (never persisted, logged, or audited in
+	 * plaintext by anything else). Must round-trip through
+	 * OperationRegistry::build($this->type(), $this->toSpec(), ...)
+	 * to an operation that behaves identically.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function toSpec(): array;
 }

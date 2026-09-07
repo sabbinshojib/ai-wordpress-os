@@ -24,6 +24,7 @@ use AIOS\Database\Repositories\ToolExecutionRepository;
 use AIOS\Mcp\Protocol\JsonRpcRequest;
 use AIOS\Mcp\Server;
 use AIOS\Mcp\Transports\RestTransport;
+use AIOS\Mutation\ChangeSetRepository;
 use AIOS\Mutation\MutationEngine;
 use AIOS\Rest\Controllers\ToolsController;
 use AIOS\Rest\RestApi;
@@ -33,6 +34,7 @@ use AIOS\Security\CapabilityManager;
 use AIOS\Security\PermissionEngine;
 use AIOS\Security\RateLimiter;
 use AIOS\Settings\Settings;
+use AIOS\Support\Crypto;
 use AIOS\Tools\Catalog\CatalogProviderInterface;
 use AIOS\Tools\Catalog\ContextTools;
 use AIOS\Tools\Catalog\ContentTools;
@@ -104,6 +106,12 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 				$c->get( AuditLogger::class )
 			)
 		);
+
+		// Phase 2 durable persistence. No dedicated key configured: uses
+		// the same environment-derived key every other Crypto call site
+		// would default to (SEC-M5) — no new secret-management service.
+		$container->bind( Crypto::class, static fn(): Crypto => new Crypto() );
+		$container->bind( ChangeSetRepository::class, static fn( Container $c ): ChangeSetRepository => new ChangeSetRepository( $c->get( Database::class ), $c->get( Crypto::class ) ) );
 
 		// Registries.
 		$container->bind( AbilityRegistry::class, static fn(): AbilityRegistry => new AbilityRegistry() );

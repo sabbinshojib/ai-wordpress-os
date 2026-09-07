@@ -119,4 +119,8 @@ final class FileCreateOperation extends AbstractOperation {
 	public function intendedValue(): string {
 		return $this->content;
 	}
+
+	public function toSpec(): array {
+		return array( 'path' => $this->path, 'content' => $this->content );
+	}
 }

@@ -123,4 +123,8 @@ final class FilePatchOperation extends AbstractOperation {
 	public function intendedValue(): string {
 		return $this->newContent;
 	}
+
+	public function toSpec(): array {
+		return array( 'path' => $this->path, 'content' => $this->newContent );
+	}
 }

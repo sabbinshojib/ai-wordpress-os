@@ -118,6 +118,7 @@ final class MutationEngineTest extends TestCase {
 			public function payloadFingerprint(): string { return hash( 'sha256', 'spy:' . $this->label ); }
 			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'spy-precondition:' . $this->label ); }
 			public function intendedValue(): mixed { return null; }
+			public function toSpec(): array { return array( 'label' => $this->label ); }
 		};
 	}
 
@@ -213,6 +214,7 @@ final class MutationEngineTest extends TestCase {
 			public function payloadFingerprint(): string { return hash( 'sha256', 'bad' ); }
 			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'bad-precondition' ); }
 			public function intendedValue(): mixed { return null; }
+			public function toSpec(): array { return array(); }
 		};
 
 		$cs     = new ChangeSet( (int) $admin->ID, array( $good, $bad ) );
@@ -246,6 +248,7 @@ final class MutationEngineTest extends TestCase {
 			public function payloadFingerprint(): string { return hash( 'sha256', 'third' ); }
 			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'third-precondition' ); }
 			public function intendedValue(): mixed { return null; }
+			public function toSpec(): array { return array(); }
 		};
 
 		$cs     = new ChangeSet( (int) $admin->ID, array( $first, $second, $third ) );
@@ -277,6 +280,7 @@ final class MutationEngineTest extends TestCase {
 			public function payloadFingerprint(): string { return hash( 'sha256', 'failing_rollback' ); }
 			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'failing_rollback-precondition' ); }
 			public function intendedValue(): mixed { return null; }
+			public function toSpec(): array { return array(); }
 		};
 		$cs     = new ChangeSet( (int) $admin->ID, array( $failing_rollback ) );
 		$result = $this->engine->submit( $cs, $admin );
@@ -412,6 +416,7 @@ final class MutationEngineTest extends TestCase {
 			public function payloadFingerprint(): string { return hash( 'sha256', 'protected-option-test' ); }
 			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'protected-option-test-precondition' ); }
 			public function intendedValue(): mixed { return null; }
+			public function toSpec(): array { return array(); }
 		};
 		$cs     = new ChangeSet( (int) $admin->ID, array( $op ) );
 		$result = $this->engine->submit( $cs, $admin );

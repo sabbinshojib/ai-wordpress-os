@@ -38,13 +38,21 @@ final class ChangeSet {
 	 * @param ChangeOperationInterface[] $operations At least one.
 	 * @param array<string, mixed>       $metadata   Free-form, non-secret context
 	 *                                                (e.g. ['reason' => ..., 'source' => 'planner']).
+	 * @param string|null                 $id         Internal use only — preserves the
+	 *                                                original id when OperationRegistry
+	 *                                                rehydrates a ChangeSet from durable
+	 *                                                storage (so its fingerprint still
+	 *                                                matches the one that was approved).
+	 *                                                A fresh ChangeSet always omits this
+	 *                                                and gets a new random id.
 	 */
 	public function __construct(
 		int $principal_user_id,
 		array $operations,
 		array $metadata = array(),
 		?int $site_id = null,
-		string $principal_type = 'user'
+		string $principal_type = 'user',
+		?string $id = null
 	) {
 		if ( array() === $operations ) {
 			throw new \InvalidArgumentException( 'A ChangeSet must contain at least one operation.' );
@@ -58,7 +66,7 @@ final class ChangeSet {
 			throw new \InvalidArgumentException( 'A ChangeSet must have a valid principal_user_id.' );
 		}
 
-		$this->id              = 'cs_' . bin2hex( random_bytes( 12 ) );
+		$this->id              = $id ?? ( 'cs_' . bin2hex( random_bytes( 12 ) ) );
 		$this->operations      = array_values( $operations );
 		$this->principalUserId = $principal_user_id;
 		$this->principalType   = $principal_type;

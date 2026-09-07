@@ -132,4 +132,8 @@ final class PostContentUpdateOperation extends AbstractOperation {
 	public function intendedValue(): array {
 		return $this->fields;
 	}
+
+	public function toSpec(): array {
+		return array( 'post_id' => $this->postId, 'fields' => $this->fields );
+	}
 }

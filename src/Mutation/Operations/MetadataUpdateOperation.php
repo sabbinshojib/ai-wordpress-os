@@ -117,4 +117,8 @@ final class MetadataUpdateOperation extends AbstractOperation {
 	public function intendedValue(): mixed {
 		return $this->newValue;
 	}
+
+	public function toSpec(): array {
+		return array( 'post_id' => $this->postId, 'meta_key' => $this->metaKey, 'value' => $this->newValue );
+	}
 }

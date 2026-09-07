@@ -40,6 +40,7 @@ final class ChangeSetFingerprintTest extends TestCase {
 			public function payloadFingerprint(): string { return hash( 'sha256', $this->payload ); }
 			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'unused' ); }
 			public function intendedValue(): mixed { return $this->payload; }
+			public function toSpec(): array { return array( 'payload' => $this->payload ); }
 		};
 	}
 

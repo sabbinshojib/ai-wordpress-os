@@ -116,4 +116,8 @@ final class OptionUpdateOperation extends AbstractOperation {
 	public function intendedValue(): mixed {
 		return $this->newValue;
 	}
+
+	public function toSpec(): array {
+		return array( 'option' => $this->optionName, 'value' => $this->newValue );
+	}
 }
