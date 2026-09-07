@@ -28,6 +28,7 @@ declare( strict_types=1 );
 
 namespace AIOS\Mutation;
 
+use AIOS\Audit\AuditLogger;
 use AIOS\Security\PathGuard;
 use WP_User;
 
@@ -36,7 +37,8 @@ final class DurableMutationCoordinator {
 	public function __construct(
 		private readonly ChangeSetRepository $repository,
 		private readonly MutationEngine $engine,
-		private readonly OperationJournalRepository $journal
+		private readonly OperationJournalRepository $journal,
+		private readonly AuditLogger $audit
 	) {}
 
 	/**
@@ -162,10 +164,38 @@ final class DurableMutationCoordinator {
 			return MutationResult::recoveryNotNeeded( $change_set_id );
 		}
 
+		$error = 'Crash recovery found this ChangeSet mid-flight (at least one operation was applied or is in an in-flight state) with no evidence it reached a terminal outcome. Automatic continuation is not attempted — manual review of the operation journal is required.';
 		$this->markManualRecovery( $change_set_id, $state );
-		return MutationResult::manualRecoveryRequired(
-			$change_set_id,
-			'Crash recovery found this ChangeSet mid-flight (at least one operation was applied or is in an in-flight state) with no evidence it reached a terminal outcome. Automatic continuation is not attempted — manual review of the operation journal is required.'
+		$this->auditRecoveryEscalation( $change_set_id, $row, $error );
+		return MutationResult::manualRecoveryRequired( $change_set_id, $error );
+	}
+
+	/**
+	 * Recovery audit lifecycle (Package L): escalating a ChangeSet to
+	 * MANUAL_RECOVERY_REQUIRED is itself a security-relevant event —
+	 * it means a mutation may be sitting in an unknown/partial state on
+	 * live WordPress data — so it is always audited, independent of
+	 * (and never gated by) whether the underlying state transition
+	 * actually happened. No acting WP_User: recover() is an operator/
+	 * maintenance action, not something performed on behalf of the
+	 * original principal.
+	 */
+	/**
+	 * @param array<string, mixed> $row
+	 */
+	private function auditRecoveryEscalation( string $change_set_id, array $row, string $error ): void {
+		$this->audit->log(
+			array(
+				'user'             => null,
+				'principal_type'   => 'system',
+				'client'           => 'mutation-coordinator',
+				'tool'             => 'mutation.recover',
+				'action'           => sprintf( 'changeset %s: manual_recovery_required', $change_set_id ),
+				'risk'             => (int) ( $row['risk'] ?? 0 ),
+				'status'           => AuditLogger::STATUS_BLOCKED,
+				'error'            => $error,
+				'affected_objects' => array( array( 'type' => 'change_set', 'target' => $change_set_id ) ),
+			)
 		);
 	}
 

@@ -126,7 +126,8 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 			static fn( Container $c ): DurableMutationCoordinator => new DurableMutationCoordinator(
 				$c->get( ChangeSetRepository::class ),
 				$c->get( MutationEngine::class ),
-				$c->get( \AIOS\Mutation\OperationJournalRepository::class )
+				$c->get( \AIOS\Mutation\OperationJournalRepository::class ),
+				$c->get( AuditLogger::class )
 			)
 		);
 		$container->bind( \AIOS\Mutation\TypedChangeSetBuilder::class, static fn(): \AIOS\Mutation\TypedChangeSetBuilder => new \AIOS\Mutation\TypedChangeSetBuilder() );

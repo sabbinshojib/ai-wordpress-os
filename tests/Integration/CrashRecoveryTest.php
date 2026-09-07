@@ -31,6 +31,7 @@ declare( strict_types=1 );
 namespace AIOS\Tests\Integration;
 
 use AIOS\Core\Plugin;
+use AIOS\Database\Repositories\AuditLogRepository;
 use AIOS\Mutation\ChangeSet;
 use AIOS\Mutation\ChangeSetRepository;
 use AIOS\Mutation\ChangeSetState;
@@ -49,12 +50,15 @@ final class CrashRecoveryTest extends TestCase {
 
 	private OperationJournalRepository $journal;
 
+	private AuditLogRepository $auditRepo;
+
 	protected function setUp(): void {
 		$this->resetPlugin();
 		$container         = Plugin::instance()->container();
 		$this->coordinator = $container->get( DurableMutationCoordinator::class );
 		$this->repo        = $container->get( ChangeSetRepository::class );
 		$this->journal     = $container->get( OperationJournalRepository::class );
+		$this->auditRepo   = $container->get( AuditLogRepository::class );
 	}
 
 	private function lowRiskChangeSet( string $option, string $value ): ChangeSet {
@@ -158,6 +162,28 @@ final class CrashRecoveryTest extends TestCase {
 		$this->assertEquals( MutationResult::STATUS_MANUAL_RECOVERY_REQUIRED, $result->status() );
 		$this->assertNotNull( $result->error() );
 		$this->assertEquals( ChangeSetState::MANUAL_RECOVERY_REQUIRED, $this->repo->load( $cs->id() )['state'] );
+	}
+
+	public function test_manual_recovery_escalation_is_audited(): void {
+		$admin = $this->adminUser();
+		$cs    = $this->sensitiveChangeSet( 'aios_crash_option_audit', 'v' );
+		$this->coordinator->submit( $cs, $admin );
+
+		$before = $this->journal->load( $cs->id(), 0 );
+		$this->journal->transition( $cs->id(), 0, OperationJournalState::SNAPSHOTTED, OperationJournalState::APPLYING, (int) $before['state_version'] );
+		$this->coordinator->recover( $cs->id() );
+
+		$rows = $this->auditRepo->query( array( 'tool' => 'mutation.recover' ) );
+		$this->assertTrue( array() !== $rows, 'escalating to MANUAL_RECOVERY_REQUIRED must leave an audit trail' );
+		$match = null;
+		foreach ( $rows as $row ) {
+			if ( str_contains( (string) $row['action'], $cs->id() ) ) {
+				$match = $row;
+				break;
+			}
+		}
+		$this->assertNotNull( $match, 'the audit row must reference this specific ChangeSet' );
+		$this->assertEquals( 'blocked', $match['status'] );
 	}
 
 	public function test_recover_escalates_when_only_some_operations_in_a_multi_op_change_set_show_progress(): void {
