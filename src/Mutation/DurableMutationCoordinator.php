@@ -50,11 +50,19 @@ final class DurableMutationCoordinator {
 		$fingerprint = ChangeSetFingerprint::compute( $change_set );
 		try {
 			$row = $this->repository->create( $change_set, $fingerprint, $idempotency_key );
-		} catch ( MutationException $e ) {
-			// Fault-injection matrix item A: a real repository/encryption
-			// failure surfaces as a safe, typed result — never an
-			// uncaught exception, never a false "success" for a
-			// ChangeSet that was never actually durably persisted.
+		} catch ( \Throwable $e ) {
+			// Fault-injection matrix items A/I: a real repository OR
+			// encryption failure surfaces as a safe, typed result —
+			// never an uncaught exception, never a false "success" for
+			// a ChangeSet that was never actually durably persisted.
+			// \Throwable (not just MutationException) because
+			// AIOS\Support\Crypto::encrypt() — called from inside
+			// create() — documents its own failure mode as a bare
+			// \RuntimeException, not a MutationException; its message
+			// is always one of Crypto's own fixed, non-secret strings
+			// (verified by CryptoTest::test_error_messages_never_contain_key_material),
+			// never a raw wpdb error (Database::insert() never throws —
+			// it returns null, handled above, not here).
 			return MutationResult::rejected( $change_set->id(), $e->getMessage() );
 		}
 
@@ -68,7 +76,7 @@ final class DurableMutationCoordinator {
 
 		try {
 			$this->createJournalRows( $change_set );
-		} catch ( MutationException $e ) {
+		} catch ( \Throwable $e ) {
 			// Fault-injection matrix item B: apply must never start if
 			// even one operation's journal row could not be durably
 			// created — mark the ChangeSet FAILED (never left at
@@ -78,9 +86,35 @@ final class DurableMutationCoordinator {
 			return MutationResult::rejected( $change_set->id(), $e->getMessage() );
 		}
 
-		$result = $this->engine->submit( $change_set, $acting, $this->journalEventHook( $change_set->id(), $change_set ) );
+		try {
+			$result = $this->engine->submit( $change_set, $acting, $this->journalEventHook( $change_set->id(), $change_set ) );
+		} catch ( \Throwable $e ) {
+			return $this->failClosedOnUnexpectedThrow( $change_set->id(), $e );
+		}
 		$this->reflectFromPlanned( $change_set->id(), $result );
 		return $result;
+	}
+
+	/**
+	 * Outermost safety net around an engine->submit()/resumeApproved()
+	 * call (fault-injection matrix item I): MutationEngine's own
+	 * captureSnapshots()/applyChangeSet() only catch MutationException
+	 * specifically — a bare \RuntimeException from
+	 * AIOS\Support\Crypto::encrypt(), reached from deep inside the
+	 * 'snapshot_captured' event hook (always BEFORE any operation's
+	 * apply() has run — see journalEventHook()'s docblock), would
+	 * otherwise escape both MutationEngine and this class entirely
+	 * uncaught. reflectFromPlanned()/reflectFromPendingApproval() have
+	 * no path for an exception that skipped MutationResult entirely, so
+	 * this explicitly marks the row FAILED itself rather than leaving
+	 * it looking untouched.
+	 */
+	private function failClosedOnUnexpectedThrow( string $change_set_id, \Throwable $e ): MutationResult {
+		$row = $this->repository->load( $change_set_id );
+		if ( null !== $row && ChangeSetState::isValidTransition( (string) $row['state'], ChangeSetState::FAILED ) ) {
+			$this->repository->transition( $change_set_id, (string) $row['state'], ChangeSetState::FAILED, (int) $row['state_version'] );
+		}
+		return MutationResult::rejected( $change_set_id, $e->getMessage() );
 	}
 
 	/**
@@ -109,13 +143,25 @@ final class DurableMutationCoordinator {
 		}
 
 		try {
-			$change_set = $this->repository->loadChangeSet( $change_set_id, $path_guard );
+			try {
+				$change_set = $this->repository->loadChangeSet( $change_set_id, $path_guard );
+			} catch ( \Throwable $e ) {
+				// Fault-injection matrix item J: a decrypt/integrity
+				// failure on the stored payload itself must never be
+				// guessed past — fail closed rather than risk resuming
+				// against a tampered or corrupted ChangeSet.
+				return $this->failClosedOnUnexpectedThrow( $change_set_id, $e );
+			}
 			if ( null === $change_set ) {
 				return MutationResult::rejected( $change_set_id, 'Unknown ChangeSet.' );
 			}
 			$this->repository->recordAttempt( $change_set_id );
 
-			$result = $this->engine->resumeApproved( $approval_id, $change_set, $decision, $deciding_user, $this->journalEventHook( $change_set_id, $change_set ) );
+			try {
+				$result = $this->engine->resumeApproved( $approval_id, $change_set, $decision, $deciding_user, $this->journalEventHook( $change_set_id, $change_set ) );
+			} catch ( \Throwable $e ) {
+				return $this->failClosedOnUnexpectedThrow( $change_set_id, $e );
+			}
 			$this->reflectFromPendingApproval( $change_set_id, $result );
 			return $result;
 		} finally {
