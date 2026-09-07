@@ -20,6 +20,9 @@ final class MutationResult {
 	public const STATUS_ROLLED_BACK         = 'rolled_back';
 	public const STATUS_ROLLBACK_FAILED     = 'rollback_failed';
 	public const STATUS_REJECTED            = 'rejected';
+	public const STATUS_STALE_STATE         = 'stale_state';
+	public const STATUS_FINGERPRINT_MISMATCH = 'fingerprint_mismatch';
+	public const STATUS_ALREADY_COMPLETED   = 'already_completed';
 
 	/**
 	 * @param VerificationResult[] $verifications
@@ -68,6 +71,18 @@ final class MutationResult {
 
 	public static function rollbackFailed( string $change_set_id, array $verifications, array $rollbacks, string $error ): self {
 		return new self( self::STATUS_ROLLBACK_FAILED, $change_set_id, null, $verifications, $rollbacks, $error );
+	}
+
+	public static function staleState( string $change_set_id, string $error, array $rollbacks = array() ): self {
+		return new self( self::STATUS_STALE_STATE, $change_set_id, null, array(), $rollbacks, $error );
+	}
+
+	public static function fingerprintMismatch( string $change_set_id, string $error ): self {
+		return new self( self::STATUS_FINGERPRINT_MISMATCH, $change_set_id, null, array(), array(), $error );
+	}
+
+	public static function alreadyCompleted( string $change_set_id ): self {
+		return new self( self::STATUS_ALREADY_COMPLETED, $change_set_id, null, array(), array(), null );
 	}
 
 	public function ok(): bool {

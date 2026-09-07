@@ -61,7 +61,13 @@ final class MetadataUpdateOperation extends AbstractOperation {
 		return new Snapshot(
 			$this->id,
 			self::TYPE,
-			array( 'post_id' => $this->postId, 'meta_key' => $this->metaKey, 'existed' => $existed, 'original_value' => $original )
+			array(
+				'post_id'       => $this->postId,
+				'meta_key'      => $this->metaKey,
+				'existed'       => $existed,
+				'original_value' => $original,
+				'precondition'  => $existed ? self::fingerprintOf( $original ) : self::absentFingerprint(),
+			)
 		);
 	}
 
@@ -91,5 +97,24 @@ final class MetadataUpdateOperation extends AbstractOperation {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to remove the newly-created meta value during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
+	}
+
+	public function payloadFingerprint(): string {
+		return self::fingerprintOf( array( 'post_id' => $this->postId, 'meta_key' => $this->metaKey, 'value' => $this->newValue ) );
+	}
+
+	public function currentPreconditionFingerprint(): string {
+		if ( null === get_post( $this->postId ) ) {
+			return self::absentFingerprint();
+		}
+		$existing = get_post_meta( $this->postId, $this->metaKey );
+		if ( array() === $existing ) {
+			return self::absentFingerprint();
+		}
+		return self::fingerprintOf( $existing[0] ?? null );
+	}
+
+	public function intendedValue(): mixed {
+		return $this->newValue;
 	}
 }

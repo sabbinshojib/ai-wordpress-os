@@ -115,6 +115,9 @@ final class MutationEngineTest extends TestCase {
 				$this->log[] = 'rollback:' . $this->label;
 				return RollbackRecord::success( $this->id, $snapshot->id() );
 			}
+			public function payloadFingerprint(): string { return hash( 'sha256', 'spy:' . $this->label ); }
+			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'spy-precondition:' . $this->label ); }
+			public function intendedValue(): mixed { return null; }
 		};
 	}
 
@@ -207,6 +210,9 @@ final class MutationEngineTest extends TestCase {
 			public function apply(): void { $this->log[] = 'apply:bad'; }
 			public function verify(): VerificationResult { $this->log[] = 'verify:bad'; return VerificationResult::failure( $this->id, 'intentional failure' ); }
 			public function rollback( Snapshot $snapshot ): RollbackRecord { $this->log[] = 'rollback:bad'; return RollbackRecord::success( $this->id, $snapshot->id() ); }
+			public function payloadFingerprint(): string { return hash( 'sha256', 'bad' ); }
+			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'bad-precondition' ); }
+			public function intendedValue(): mixed { return null; }
 		};
 
 		$cs     = new ChangeSet( (int) $admin->ID, array( $good, $bad ) );
@@ -237,6 +243,9 @@ final class MutationEngineTest extends TestCase {
 			public function apply(): void { $this->log[] = 'apply:third'; throw new MutationException( 'test.fail', 'intentional apply failure' ); }
 			public function verify(): VerificationResult { return VerificationResult::success( $this->id ); }
 			public function rollback( Snapshot $snapshot ): RollbackRecord { $this->log[] = 'rollback:third'; return RollbackRecord::success( $this->id, $snapshot->id() ); }
+			public function payloadFingerprint(): string { return hash( 'sha256', 'third' ); }
+			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'third-precondition' ); }
+			public function intendedValue(): mixed { return null; }
 		};
 
 		$cs     = new ChangeSet( (int) $admin->ID, array( $first, $second, $third ) );
@@ -265,6 +274,9 @@ final class MutationEngineTest extends TestCase {
 			public function apply(): void {}
 			public function verify(): VerificationResult { return VerificationResult::failure( $this->id, 'force rollback' ); }
 			public function rollback( Snapshot $snapshot ): RollbackRecord { return RollbackRecord::failure( $this->id, $snapshot->id(), 'rollback deliberately fails' ); }
+			public function payloadFingerprint(): string { return hash( 'sha256', 'failing_rollback' ); }
+			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'failing_rollback-precondition' ); }
+			public function intendedValue(): mixed { return null; }
 		};
 		$cs     = new ChangeSet( (int) $admin->ID, array( $failing_rollback ) );
 		$result = $this->engine->submit( $cs, $admin );
@@ -397,6 +409,9 @@ final class MutationEngineTest extends TestCase {
 			public function apply(): void {}
 			public function verify(): VerificationResult { return VerificationResult::success( $this->id() ); }
 			public function rollback( Snapshot $snapshot ): RollbackRecord { return RollbackRecord::success( $this->id(), $snapshot->id() ); }
+			public function payloadFingerprint(): string { return hash( 'sha256', 'protected-option-test' ); }
+			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'protected-option-test-precondition' ); }
+			public function intendedValue(): mixed { return null; }
 		};
 		$cs     = new ChangeSet( (int) $admin->ID, array( $op ) );
 		$result = $this->engine->submit( $cs, $admin );
@@ -475,5 +490,111 @@ final class MutationEngineTest extends TestCase {
 		$this->assertEquals( 'site1-new', get_option( 'aios_test_option' ), 'site 1 state must be unaffected by visiting site 2' );
 
 		$this->multisiteTearDown();
+	}
+
+	public function test_cross_site_resume_binds_the_changesets_own_site_not_the_current_request_site(): void {
+		$GLOBALS['__wp_shim']['multisite']      = true;
+		$GLOBALS['__wp_shim']['sites']          = array( 1, 2 );
+		$GLOBALS['__wp_shim']['current_blog_id'] = 2;
+		update_option( 'aios_cross_site_option', 'site2-value' ); // set while "on" site 2
+
+		switch_to_blog( 1 );
+		update_option( 'aios_cross_site_option', 'site1-value' );
+		$admin = $this->adminUser();
+		$op    = new OptionUpdateOperation( 'aios_cross_site_option', 'site1-new' );
+		$cs    = new ChangeSet( (int) $admin->ID, array( $op ), array(), 1 ); // explicitly bound to site 1
+		$submitted = $this->engine->submit( $cs, $admin );
+		restore_current_blog(); // back to site 2, as if a later request came in on a different site
+
+		$this->assertEquals( 2, (int) get_current_blog_id(), 'sanity: current request context is site 2' );
+
+		$result = $this->engine->resumeApproved( (int) $submitted->approvalId(), $cs, 'approved', $admin );
+		$this->assertTrue( $result->ok(), 'resumeApproved() must bind to the ChangeSets OWN site (1), not whatever site the current request happens to be on' );
+
+		switch_to_blog( 1 );
+		$this->assertEquals( 'site1-new', get_option( 'aios_cross_site_option' ), 'the mutation must have landed on site 1' );
+		restore_current_blog();
+
+		$this->assertEquals( 'site2-value', get_option( 'aios_cross_site_option' ), 'site 2s own value must be completely untouched' );
+
+		$this->multisiteTearDown();
+	}
+
+	// ================================================================
+	// Stale-state / TOCTOU (Sprint 0.3A Phase 2 hardening, Package K)
+	// ================================================================
+
+	public function test_stale_state_between_snapshot_and_apply_fails_closed(): void {
+		update_option( 'aios_toctou_option', 'original' );
+		$admin = $this->adminUser();
+		$op    = new OptionUpdateOperation( 'aios_toctou_option', 'intended-new-value' );
+		$cs    = new ChangeSet( (int) $admin->ID, array( $op ) );
+
+		// OptionUpdate is SENSITIVE -> approval required in safe mode.
+		$submitted = $this->engine->submit( $cs, $admin );
+		$this->assertEquals( MutationResult::STATUS_APPROVAL_REQUIRED, $submitted->status() );
+
+		// Something else changes the option AFTER approval was requested
+		// but BEFORE the approval is acted on — exactly the TOCTOU window.
+		update_option( 'aios_toctou_option', 'changed-by-someone-else' );
+
+		$result = $this->engine->resumeApproved( (int) $submitted->approvalId(), $cs, 'approved', $admin );
+
+		$this->assertEquals( MutationResult::STATUS_STALE_STATE, $result->status() );
+		$this->assertEquals( 'changed-by-someone-else', get_option( 'aios_toctou_option' ), 'the drifted value must be left exactly as it was — never overwritten by a stale-approved mutation' );
+	}
+
+	public function test_unchanged_state_passes_the_precondition_check(): void {
+		update_option( 'aios_toctou_stable_option', 'stable-value' );
+		$admin = $this->adminUser();
+		$op    = new OptionUpdateOperation( 'aios_toctou_stable_option', 'new-value' );
+		$cs    = new ChangeSet( (int) $admin->ID, array( $op ) );
+
+		$submitted = $this->engine->submit( $cs, $admin );
+		$result    = $this->engine->resumeApproved( (int) $submitted->approvalId(), $cs, 'approved', $admin );
+
+		$this->assertTrue( $result->ok() );
+		$this->assertEquals( 'new-value', get_option( 'aios_toctou_stable_option' ) );
+	}
+
+	// ================================================================
+	// Fingerprint binding (Sprint 0.3A Phase 2 hardening, Packages C/D)
+	// ================================================================
+
+	public function test_resume_rejects_a_changeset_with_a_different_payload_than_what_was_approved(): void {
+		update_option( 'aios_fp_option', 'v1' );
+		$admin = $this->adminUser();
+		$op          = new OptionUpdateOperation( 'aios_fp_option', 'approved-value' );
+		$cs_reviewed = new ChangeSet( (int) $admin->ID, array( $op ) );
+		$submitted   = $this->engine->submit( $cs_reviewed, $admin );
+		$this->assertEquals( MutationResult::STATUS_APPROVAL_REQUIRED, $submitted->status() );
+
+		// Caller hands back a DIFFERENT ChangeSet (same id is impossible to
+		// forge since ids are random per-instance, so this models the
+		// realistic attack: a caller that mismanages state and resumes
+		// with the wrong in-memory ChangeSet for a given approval id).
+		$tampered_op = new OptionUpdateOperation( 'aios_fp_option', 'attacker-value' );
+		$tampered_cs = new ChangeSet( (int) $admin->ID, array( $tampered_op ) );
+
+		$result = $this->engine->resumeApproved( (int) $submitted->approvalId(), $tampered_cs, 'approved', $admin );
+
+		$this->assertEquals( MutationResult::STATUS_FINGERPRINT_MISMATCH, $result->status() );
+		$this->assertEquals( 'v1', get_option( 'aios_fp_option' ), 'no mutation may occur when the resumed ChangeSet does not match what was approved' );
+	}
+
+	public function test_resume_rejects_reordered_operations_even_with_identical_payloads(): void {
+		$admin = $this->adminUser();
+		$op_a  = new OptionUpdateOperation( 'aios_fp_a', 'a-value' );
+		$op_b  = new OptionUpdateOperation( 'aios_fp_b', 'b-value' );
+
+		$forward   = new ChangeSet( (int) $admin->ID, array( $op_a, $op_b ) );
+		$submitted = $this->engine->submit( $forward, $admin );
+
+		$op_a2 = new OptionUpdateOperation( 'aios_fp_a', 'a-value' );
+		$op_b2 = new OptionUpdateOperation( 'aios_fp_b', 'b-value' );
+		$reversed = new ChangeSet( (int) $admin->ID, array( $op_b2, $op_a2 ) );
+
+		$result = $this->engine->resumeApproved( (int) $submitted->approvalId(), $reversed, 'approved', $admin );
+		$this->assertEquals( MutationResult::STATUS_FINGERPRINT_MISMATCH, $result->status() );
 	}
 }

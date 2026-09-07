@@ -76,7 +76,7 @@ final class PostContentUpdateOperation extends AbstractOperation {
 		foreach ( array_keys( $this->fields ) as $field ) {
 			$original[ $field ] = $post->{$field} ?? '';
 		}
-		return new Snapshot( $this->id, self::TYPE, array( 'post_id' => $this->postId, 'original' => $original ) );
+		return new Snapshot( $this->id, self::TYPE, array( 'post_id' => $this->postId, 'original' => $original, 'precondition' => self::fingerprintOf( $original ) ) );
 	}
 
 	public function apply(): void {
@@ -108,5 +108,28 @@ final class PostContentUpdateOperation extends AbstractOperation {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to restore the original post fields during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
+	}
+
+	public function payloadFingerprint(): string {
+		return self::fingerprintOf( array( 'post_id' => $this->postId, 'fields' => $this->fields ) );
+	}
+
+	public function currentPreconditionFingerprint(): string {
+		$post = get_post( $this->postId );
+		if ( null === $post ) {
+			return self::absentFingerprint();
+		}
+		$current = array();
+		foreach ( array_keys( $this->fields ) as $field ) {
+			$current[ $field ] = $post->{$field} ?? '';
+		}
+		return self::fingerprintOf( $current );
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	public function intendedValue(): array {
+		return $this->fields;
 	}
 }

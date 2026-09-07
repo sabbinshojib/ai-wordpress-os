@@ -68,7 +68,12 @@ final class OptionUpdateOperation extends AbstractOperation {
 		return new Snapshot(
 			$this->id,
 			self::TYPE,
-			array( 'option' => $this->optionName, 'existed' => $existed, 'original_value' => $existed ? $existing : null )
+			array(
+				'option'        => $this->optionName,
+				'existed'       => $existed,
+				'original_value' => $existed ? $existing : null,
+				'precondition'  => $existed ? self::fingerprintOf( $existing ) : self::absentFingerprint(),
+			)
 		);
 	}
 
@@ -96,5 +101,19 @@ final class OptionUpdateOperation extends AbstractOperation {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to remove the newly-created option during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
+	}
+
+	public function payloadFingerprint(): string {
+		return self::fingerprintOf( array( 'option' => $this->optionName, 'value' => $this->newValue ) );
+	}
+
+	public function currentPreconditionFingerprint(): string {
+		$sentinel = "\0ai-os-mutation-option-absent\0";
+		$current  = get_option( $this->optionName, $sentinel );
+		return $sentinel === $current ? self::absentFingerprint() : self::fingerprintOf( $current );
+	}
+
+	public function intendedValue(): mixed {
+		return $this->newValue;
 	}
 }

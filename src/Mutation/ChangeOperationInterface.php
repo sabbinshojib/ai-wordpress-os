@@ -94,4 +94,38 @@ interface ChangeOperationInterface {
 	 * call even when apply() never ran or failed partway through.
 	 */
 	public function rollback( Snapshot $snapshot ): RollbackRecord;
+
+	/**
+	 * A deterministic, one-way hash (sha256 hex) binding this
+	 * operation's TYPE, TARGET, and intended new content/value —
+	 * changing any of them changes this hash. Never contains the raw
+	 * payload itself, so it is always safe to store/log/compare even
+	 * when the payload is secret-shaped. Used by ChangeSetFingerprint
+	 * so an approval can be bound to exactly what will happen, not
+	 * merely to a ChangeSet id.
+	 */
+	public function payloadFingerprint(): string;
+
+	/**
+	 * The current, live "precondition" state this operation's apply()
+	 * depends on being unchanged since captureSnapshot() ran — e.g. a
+	 * fresh hash of a file's current bytes, or the option's current
+	 * value. Called immediately before apply() to detect TOCTOU drift
+	 * (something else changed the target between Snapshot/Approval and
+	 * Apply). Must be cheap and side-effect-free. Returning a value
+	 * that differs from the one captured in captureSnapshot()'s
+	 * Snapshot (state()['precondition']) means the pipeline fails
+	 * closed with a stale-state result instead of applying.
+	 */
+	public function currentPreconditionFingerprint(): string;
+
+	/**
+	 * The operation's intended new state, in whatever shape is natural
+	 * for it (a string for file content, a scalar/array for an option
+	 * or meta value, an associative array of fields for a post update).
+	 * Used only by AIOS\Mutation\DiffRenderer to build a human-reviewable
+	 * before/after — DiffRenderer, not this method, is responsible for
+	 * redacting secret-shaped values before anything is stored/logged.
+	 */
+	public function intendedValue(): mixed;
 }

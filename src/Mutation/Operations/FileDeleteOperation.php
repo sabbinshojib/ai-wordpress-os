@@ -65,7 +65,7 @@ final class FileDeleteOperation extends AbstractOperation {
 		if ( false === $original ) {
 			throw new MutationException( 'file_delete.read_failed', 'Failed to read the file content before deletion.' );
 		}
-		return new Snapshot( $this->id, self::TYPE, array( 'path' => $this->resolvedPath, 'original_content' => $original ) );
+		return new Snapshot( $this->id, self::TYPE, array( 'path' => $this->resolvedPath, 'original_content' => $original, 'precondition' => self::fingerprintOf( $original ) ) );
 	}
 
 	public function apply(): void {
@@ -88,5 +88,22 @@ final class FileDeleteOperation extends AbstractOperation {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to recreate the deleted file during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
+	}
+
+	public function payloadFingerprint(): string {
+		return self::fingerprintOf( array( 'path' => $this->path, 'action' => 'delete' ) );
+	}
+
+	public function currentPreconditionFingerprint(): string {
+		$path = $this->resolvedPath ?? $this->path;
+		if ( ! file_exists( $path ) ) {
+			return self::absentFingerprint();
+		}
+		$content = file_get_contents( $path );
+		return self::fingerprintOf( false === $content ? null : $content );
+	}
+
+	public function intendedValue(): null {
+		return null; // Deletion has no "new content" — the diff represents this as pure removal.
 	}
 }

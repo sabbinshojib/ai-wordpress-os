@@ -44,6 +44,9 @@ final class MutationDomainTest extends TestCase {
 			public function captureSnapshot(): Snapshot { return new Snapshot( $this->id, $this->stubType, array() ); }
 			public function apply(): void {}
 			public function verify(): VerificationResult { return VerificationResult::success( $this->id ); }
+			public function payloadFingerprint(): string { return hash( 'sha256', $this->stubType ); }
+			public function currentPreconditionFingerprint(): string { return hash( 'sha256', 'stub-precondition' ); }
+			public function intendedValue(): mixed { return null; }
 			public function rollback( Snapshot $snapshot ): RollbackRecord { return RollbackRecord::success( $this->id, $snapshot->id() ); }
 		};
 	}

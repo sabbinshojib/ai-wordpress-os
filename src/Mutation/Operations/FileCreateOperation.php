@@ -64,7 +64,7 @@ final class FileCreateOperation extends AbstractOperation {
 			throw new MutationException( 'file_create.already_exists', 'A file already exists at this path; use FilePatchOperation to modify it.' );
 		}
 		// Nothing to back up — rollback is "delete the file this operation created".
-		return new Snapshot( $this->id, self::TYPE, array( 'existed' => false, 'path' => $this->resolvedPath ) );
+		return new Snapshot( $this->id, self::TYPE, array( 'existed' => false, 'path' => $this->resolvedPath, 'precondition' => $this->currentPreconditionFingerprint() ) );
 	}
 
 	public function apply(): void {
@@ -95,5 +95,28 @@ final class FileCreateOperation extends AbstractOperation {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to delete the created file during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
+	}
+
+	public function payloadFingerprint(): string {
+		return self::fingerprintOf( array( 'path' => $this->path, 'content' => $this->content ) );
+	}
+
+	/**
+	 * FileCreate's precondition is "nothing exists at this path yet" —
+	 * the absent sentinel when true, a content fingerprint (proving
+	 * something now DOES exist) otherwise, so any change from absent to
+	 * present between Snapshot and Apply is detected as stale state.
+	 */
+	public function currentPreconditionFingerprint(): string {
+		$path = $this->resolvedPath ?? $this->path;
+		if ( ! file_exists( $path ) ) {
+			return self::absentFingerprint();
+		}
+		$content = file_get_contents( $path );
+		return self::fingerprintOf( false === $content ? null : $content );
+	}
+
+	public function intendedValue(): string {
+		return $this->content;
 	}
 }
