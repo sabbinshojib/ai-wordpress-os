@@ -3,10 +3,12 @@
 > Phase 1 Foundation — design document. This file describes the architecture that is
 > **implemented** in this release. Anything marked `Phase 2+` is designed-for but not
 > implemented yet (interfaces/slots exist, no fake UI and no dead buttons), with one
-> partial exception: §13's Phase 2 mutation pipeline has a real, tested, in-process
-> implementation (`AIOS\Mutation\*`) as of 2026-09-07 — but no durable persistence
-> layer, and it is not wired to any AI-facing tool/REST/MCP surface. See §13 for the
-> exact implemented-vs-not split; never round this up to "Phase 2 complete."
+> partial exception: §13's Phase 2 mutation pipeline has a real, tested implementation
+> (`AIOS\Mutation\*`) as of 2026-09-07 — including durable, encrypted persistence, a
+> DB-backed execution lease, and durable replay protection — but no per-operation
+> crash-recovery journal, no real WordPress/MySQL execution (shim-only), and it is not
+> wired to any AI-facing tool/REST/MCP surface. See §13 for the exact
+> implemented-vs-not split; never round this up to "Phase 2 complete."
 
 ## 1. Product shape
 
@@ -355,17 +357,21 @@ User Request
                  or explicit operator request)
 ```
 
-**Status (2026-09-07): PARTIAL — real, tested pipeline mechanics; no durable state
-layer.** `AIOS\Mutation\*` exists (`ChangeOperationInterface`, `ChangeSet`, `Snapshot`,
-`MutationDiff`/`OperationDiff`/`DiffRenderer`, `ChangeSetFingerprint`, `ChangeSetState`,
-`VerificationResult`, `RollbackRecord`, `MutationResult`, `MutationEngine`) plus six
-concrete operations (`Operations\FileCreateOperation`, `FilePatchOperation`,
-`FileDeleteOperation`, `OptionUpdateOperation`, `PostContentUpdateOperation`,
-`MetadataUpdateOperation`). **Not exposed to any AI-facing tool, REST endpoint, or MCP
-surface** — `MutationEngine` is container-bindable and directly tested, nothing else
-can reach it.
+**Status (2026-09-07): PARTIAL — real, tested pipeline mechanics AND a real, tested
+durable persistence layer; no per-operation crash-recovery journal, no AI-facing
+exposure.** `AIOS\Mutation\*` exists: the in-process pipeline (`ChangeOperationInterface`,
+`ChangeSet`, `Snapshot`, `MutationDiff`/`OperationDiff`/`DiffRenderer`,
+`ChangeSetFingerprint`, `ChangeSetState`, `VerificationResult`, `RollbackRecord`,
+`MutationResult`, `MutationEngine`), six concrete operations (`Operations\FileCreateOperation`,
+`FilePatchOperation`, `FileDeleteOperation`, `OptionUpdateOperation`,
+`PostContentUpdateOperation`, `MetadataUpdateOperation`), the durable layer
+(`ChangeSetRepository`, `OperationRegistry`, `DurableMutationCoordinator`), and a typed
+Planner boundary (`MutationPlannerInterface`, `TypedChangeSetBuilder`,
+`OperationSpecification`). **Not exposed to any AI-facing tool, REST endpoint, or MCP
+surface** — everything here is container-bindable and directly tested, nothing else
+can reach it yet.
 
-**Implemented and tested** (346 tests as of this update):
+**Implemented and tested** (396 tests as of this update):
 - The full in-memory pipeline: Policy → Snapshot → Diff → Approval → Apply → Verify →
   Audit → Rollback, in that order, for a single synchronous request.
 - Diff is a real, redacted before/after (`DiffRenderer`, reusing `AIOS\Support\Diff`
@@ -393,33 +399,64 @@ can reach it.
 - `ChangeSetState`: the transition-legality authority (`PLANNED` → … → `COMPLETED`,
   plus `FAILED`/`ROLLBACK_REQUIRED`/`ROLLING_BACK`/`ROLLED_BACK`/`ROLLBACK_FAILED`/
   `EXPIRED`/`CANCELLED`/`STALE`), fails closed via `MutationException` on an illegal
-  transition — defined and tested, but **not yet consulted by anything durable**, since
-  no durable ChangeSet record exists yet (see below).
+  transition — consulted by `ChangeSetRepository::transition()` before every durable
+  write, not merely defined in isolation.
+- **Durable persistence** (migration `202509070001`, table `ai_os_change_sets`):
+  `ChangeSetRepository` encrypts the operation payload and a separate recovery/
+  snapshot-journal payload via the existing SEC-M5 `Crypto` service (no new crypto
+  layer; environment-derived key; this is Crypto's first real durable call site), with
+  a sha256 integrity hash checked after every decrypt on top of Crypto's own AEAD tag.
+  Every state transition is a compare-and-swap (`state` + `state_version`) — 0 rows
+  affected means the caller's view was stale, never silently overwritten.
+- **Safe rehydration**: `OperationRegistry` is the *only* place a persisted type string
+  becomes a class instance — a closed `match()` over the six known type constants,
+  never `new $class`, `unserialize()`, or Reflection from stored/caller data. Unknown
+  type, unsupported schema version, and malformed spec all fail closed with distinct
+  `MutationException` codes. `serialize()`/`rehydrate()` round-trip a whole ChangeSet
+  (including its fingerprint, verified identical after the round trip).
+- **Execution lease**: a DB-backed, atomic acquire/release/stale-takeover lease
+  (owner token + expiry) on the durable row — never in-memory-only, so two separate
+  requests/processes cannot both execute the same ChangeSet.
+- **Durable replay protection**: `DurableMutationCoordinator::resume()` refuses
+  outright once a row is `COMPLETED`, regardless of how many times it is called —
+  holds across process restarts, not just within one request's approval-claim
+  atomicity (which was already real before this layer existed).
+- **Caller-side simplicity** (Package 9's actual requirement): `DurableMutationCoordinator::resume()`
+  takes only a ChangeSet id string — the caller never reconstructs a ChangeSet by hand.
+  `MutationEngine::resumeApproved()` itself is unchanged and still requires that,
+  remaining available for the pure in-memory (no persistence) use case.
+- **Idempotent submit**: a second `submit()` with the same idempotency key returns the
+  original outcome (`alreadyCompleted()` once terminal) instead of creating a
+  duplicate durable row or re-running the mutation.
+- **Retention**: `ChangeSetRepository::purgeTerminalOlderThan()`, wired into the
+  existing daily maintenance cron, reusing the audit-log retention window. Filters by
+  `ChangeSetState::isTerminal()` in PHP rather than a SQL `IN (...)` clause (a
+  deliberate choice — a filtering mistake in a purge path deletes data) and never
+  purges `ROLLBACK_FAILED` (manual recovery required) regardless of age.
+- **Typed Planner boundary**: `TypedChangeSetBuilder` builds every operation
+  exclusively through `OperationRegistry::build()` — the only intended upstream
+  construction path for a future caller (Phase 3, not built). Rejects an unknown type,
+  a class name disguised as a type, a non-`OperationSpecification` entry, and an empty
+  specification list.
 
 **Not implemented — explicit gaps, not silently deferred:**
-- **No durable ChangeSet persistence.** A ChangeSet's operations live only in the
-  PHP request that constructed them; only the approval row (id, fingerprint, risk,
-  preview, submission-time preconditions) is durable. `resumeApproved()` requires the
-  caller to reconstruct and pass back the identical ChangeSet — safe (the fingerprint
-  check catches a mismatch) but not self-sufficient across a real multi-request
-  workflow without an external store of the ChangeSet's own operations.
-- **No encryption-at-rest for operation payloads** — there is nothing durable to
-  encrypt yet; `AIOS\Support\Crypto` (SEC-M5) is the intended mechanism once there is.
-- **No recovery journal.** A process crash mid-`apply()` for a multi-operation
-  ChangeSet is not durably recorded at per-operation granularity; only the in-memory
-  rollback-on-failure path (same request) is implemented.
-- **No safe-operation registry/rehydration** (a closed type-string → operation-class
-  whitelist for deserializing a persisted ChangeSet) — unnecessary today since nothing
-  is persisted, but required before persistence lands, to avoid ever instantiating a
-  class from untrusted stored data.
-- **No durable replay/idempotency or execution lease** beyond the atomic, already-real
-  `ApprovalRepository::claimPending()` (one approval can only ever be claimed once —
-  tested). A `COMPLETED`-state short-circuit and a cross-process execution lock both
-  depend on the durable store above.
-- **No retention/purge job** for mutation records (none exist to purge yet).
-- **No typed Planner boundary** — callers construct `ChangeSet`/operations directly;
-  a `MutationPlannerInterface`-style typed builder that is the *only* legitimate
-  upstream construction path (so Phase 3 cannot bypass validation) does not exist yet.
+- **No per-operation crash-recovery journal.** The durable row's `state` is the
+  recovery journal at ChangeSet granularity (a crash mid-apply leaves the row in
+  `APPLYING`, detectable), not per-operation granularity (which of N operations in a
+  multi-op ChangeSet had actually completed is not durably tracked independently of
+  the in-memory rollback-on-failure path, which only runs within the same request).
+- **No fault-injection test harness** for repository-layer failures (insert/update
+  failure, decrypt failure mid-flow) — covered only indirectly, via the real
+  (deterministic) tamper/wrong-key/malformed-envelope tests.
+- **No real WordPress/MySQL execution.** Every test above runs against this
+  repository's own PHP-only WordPress shim (`tests/shim/wp-functions.php`), not a real
+  MySQL/MariaDB instance or a real WordPress install — no such environment was
+  available in the authoring sandbox. This is an honest, explicit validation blocker
+  for production confidence in the SQL itself (the shim's fake SQL engine is
+  deliberately scoped, documented in its own file, and this work found and fixed one
+  of its latent gaps — see the report).
+- **No AI-facing exposure** — by design, for this pass. Nothing here is reachable from
+  any REST endpoint, MCP tool, or admin action yet.
 
 See `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md` for the full narrative and the
 Phase 2 hardening pass's adversarial-review findings.
