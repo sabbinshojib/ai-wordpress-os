@@ -81,8 +81,8 @@ final class ChangeSetRepository {
 		$payload      = OperationRegistry::serialize( $change_set );
 		$payload_json = (string) json_encode( $payload, JSON_UNESCAPED_SLASHES );
 
-		$now = $this->now();
-		$this->db->insert(
+		$now       = $this->now();
+		$insert_id = $this->db->insert(
 			$this->table(),
 			array(
 				'change_set_id'      => $change_set->id(),
@@ -109,8 +109,20 @@ final class ChangeSetRepository {
 			)
 		);
 
-		/** @var array<string, mixed> $row */
+		// Fail closed (Package 4/5 fault-injection review): the INSERT's
+		// own return value was previously discarded here, so a real wpdb
+		// insert failure fell through to load(), which would return null
+		// against this method's non-nullable `array` return type — a
+		// TypeError, not a controlled failure. A caller must never see a
+		// "success" row that was never actually written.
+		if ( null === $insert_id ) {
+			throw new MutationException( 'changeset.persist_failed', 'Failed to persist the ChangeSet row.' );
+		}
+
 		$row = $this->load( $change_set->id() );
+		if ( null === $row ) {
+			throw new MutationException( 'changeset.persist_failed', 'ChangeSet row could not be read back immediately after insert.' );
+		}
 		return $row;
 	}
 

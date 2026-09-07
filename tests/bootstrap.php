@@ -20,5 +20,12 @@ require_once dirname( __DIR__ ) . '/ai-wordpress-os.php';
 // bundled runner, not this shared bootstrap, loaded it).
 require_once __DIR__ . '/TestCase.php';
 
+// Deterministic test collaborators for repository fault-injection
+// coverage (Sprint 0.3A Phase 2 exit-gate closure) — required here for
+// the same reason as TestCase.php above: the AIOS\ autoloader only
+// knows about src/, not tests/.
+require_once __DIR__ . '/Support/FaultInjectingDatabase.php';
+require_once __DIR__ . '/Support/FaultInjectingCrypto.php';
+
 // Boot the kernel like WordPress would on plugins_loaded.
 __run_hook( 'plugins_loaded' );

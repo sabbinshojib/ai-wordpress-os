@@ -46,8 +46,8 @@ final class OperationJournalRepository {
 	 * operation was part of the plan.
 	 */
 	public function create( string $change_set_id, int $operation_index, ChangeOperationInterface $operation, int $site_id ): array {
-		$now = $this->now();
-		$this->db->insert(
+		$now       = $this->now();
+		$insert_id = $this->db->insert(
 			$this->table(),
 			array(
 				'change_set_id'    => $change_set_id,
@@ -63,8 +63,19 @@ final class OperationJournalRepository {
 				'updated_at'       => $now,
 			)
 		);
-		/** @var array<string, mixed> $row */
+
+		// Fail closed (Package 4/5 fault-injection review — mirrors the
+		// same fix in ChangeSetRepository::create()): never let a
+		// discarded INSERT failure fall through to load() returning null
+		// against this method's non-nullable `array` return type.
+		if ( null === $insert_id ) {
+			throw new MutationException( 'operation_journal.persist_failed', 'Failed to persist the operation journal row.' );
+		}
+
 		$row = $this->load( $change_set_id, $operation_index );
+		if ( null === $row ) {
+			throw new MutationException( 'operation_journal.persist_failed', 'Operation journal row could not be read back immediately after insert.' );
+		}
 		return $row;
 	}
 

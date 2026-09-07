@@ -48,7 +48,15 @@ final class DurableMutationCoordinator {
 	 */
 	public function submit( ChangeSet $change_set, WP_User $acting, ?string $idempotency_key = null ): MutationResult {
 		$fingerprint = ChangeSetFingerprint::compute( $change_set );
-		$row         = $this->repository->create( $change_set, $fingerprint, $idempotency_key );
+		try {
+			$row = $this->repository->create( $change_set, $fingerprint, $idempotency_key );
+		} catch ( MutationException $e ) {
+			// Fault-injection matrix item A: a real repository/encryption
+			// failure surfaces as a safe, typed result — never an
+			// uncaught exception, never a false "success" for a
+			// ChangeSet that was never actually durably persisted.
+			return MutationResult::rejected( $change_set->id(), $e->getMessage() );
+		}
 
 		if ( $row['change_set_id'] !== $change_set->id() ) {
 			// Idempotent hit: create() returned a PRE-EXISTING row for this key.
@@ -58,7 +66,17 @@ final class DurableMutationCoordinator {
 			return MutationResult::rejected( $change_set->id(), 'An in-progress or already-decided ChangeSet exists for this idempotency key.' );
 		}
 
-		$this->createJournalRows( $change_set );
+		try {
+			$this->createJournalRows( $change_set );
+		} catch ( MutationException $e ) {
+			// Fault-injection matrix item B: apply must never start if
+			// even one operation's journal row could not be durably
+			// created — mark the ChangeSet FAILED (never left at
+			// PLANNED, which would look like nothing was ever
+			// attempted) and stop before engine->submit() runs anything.
+			$this->repository->transition( $change_set->id(), ChangeSetState::PLANNED, ChangeSetState::FAILED, (int) $row['state_version'] );
+			return MutationResult::rejected( $change_set->id(), $e->getMessage() );
+		}
 
 		$result = $this->engine->submit( $change_set, $acting, $this->journalEventHook( $change_set->id(), $change_set ) );
 		$this->reflectFromPlanned( $change_set->id(), $result );
