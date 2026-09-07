@@ -260,6 +260,23 @@ final class DurableMutationCoordinator {
 	 * re-runs captureSnapshots() a SECOND time — its 'snapshot_captured'
 	 * events must not fail just because the row already left PENDING
 	 * during the original submit().
+	 *
+	 * Fault-injection matrix items C/D (Sprint 0.3A Phase 2 exit-gate
+	 * closure): 'snapshot_captured' and 'apply_started' use STRICT
+	 * advance() — a durable write failure there throws, which
+	 * MutationEngine is specifically written to route through its
+	 * existing snapshot-failure / apply-failure-and-rollback paths (see
+	 * MutationEngine::captureSnapshots()'s callers and the try block in
+	 * applyChangeSet()), so live WordPress state is never mutated
+	 * without first durably recording the intent, and anything already
+	 * applied earlier in the same ChangeSet is rolled back exactly as
+	 * if apply() itself had failed. Every event AFTER an operation's own
+	 * apply() has already run (apply_completed onward) intentionally
+	 * stays lenient/best-effort: MutationEngine has no equivalent "undo
+	 * what already happened" hook for a POST-mutation journal failure,
+	 * so throwing there would abandon the rollback loop for any sibling
+	 * operation partway through rather than making anything safer — a
+	 * deliberate, documented scope boundary, not an oversight.
 	 */
 	private function journalEventHook( string $change_set_id, ChangeSet $change_set ): \Closure {
 		$index_by_object = array();
@@ -279,12 +296,14 @@ final class DurableMutationCoordinator {
 					$snapshot = $context['snapshot'];
 					$state    = $snapshot->state();
 					$json     = (string) json_encode( $state, JSON_UNESCAPED_SLASHES );
-					$this->journal->saveRecovery( $change_set_id, $operation_index, $state, hash( 'sha256', $json ) );
-					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::PENDING ), OperationJournalState::SNAPSHOTTED );
+					if ( ! $this->journal->saveRecovery( $change_set_id, $operation_index, $state, hash( 'sha256', $json ) ) ) {
+						throw new MutationException( 'operation_journal.write_failed', 'Failed to durably persist this operation\'s recovery state — refusing to proceed to Diff/Approval/Apply without it.' );
+					}
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::PENDING ), OperationJournalState::SNAPSHOTTED, array(), true );
 					break;
 
 				case 'apply_started':
-					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::SNAPSHOTTED ), OperationJournalState::APPLYING );
+					$this->advance( $change_set_id, $operation_index, array( OperationJournalState::SNAPSHOTTED ), OperationJournalState::APPLYING, array(), true );
 					$this->journal->markTimestamp( $change_set_id, $operation_index, 'apply_started_at' );
 					break;
 
@@ -351,23 +370,42 @@ final class DurableMutationCoordinator {
 
 	/**
 	 * Load the journal row's CURRENT state and transition only when it
-	 * is still one of $allowed_from — silently a no-op otherwise. Never
-	 * an error: the resumeApproved() path re-fires 'snapshot_captured'
-	 * for a row already past PENDING, and that must not throw.
+	 * is still one of $allowed_from. A row already past $allowed_from
+	 * (e.g. resumeApproved()'s second 'snapshot_captured' firing for a
+	 * row already SNAPSHOTTED) is ALWAYS a legitimate no-op, strict or
+	 * not — that is not a failure to report.
+	 *
+	 * $strict distinguishes what happens when the row WAS at an
+	 * allowed state but the CAS transition() itself then failed (a
+	 * real durable-write fault, not a legitimate skip): non-strict
+	 * (the default — every event from 'apply_completed' onward)
+	 * silently proceeds, matching this hook's general "never make a
+	 * security decision" contract; strict (only 'snapshot_captured'
+	 * and 'apply_started' — see this class's journalEventHook()
+	 * docblock for why exactly those two) throws, and MutationEngine
+	 * is specifically written to catch that the same way it catches a
+	 * real apply()/captureSnapshot() failure.
 	 *
 	 * @param string[] $allowed_from
 	 * @param array<string, mixed> $extra_fields
+	 * @throws MutationException "operation_journal.write_failed" when $strict and the CAS transition itself failed.
 	 */
-	private function advance( string $change_set_id, int $operation_index, array $allowed_from, string $to, array $extra_fields = array() ): void {
+	private function advance( string $change_set_id, int $operation_index, array $allowed_from, string $to, array $extra_fields = array(), bool $strict = false ): void {
 		$row = $this->journal->load( $change_set_id, $operation_index );
 		if ( null === $row ) {
+			if ( $strict ) {
+				throw new MutationException( 'operation_journal.write_failed', 'No journal row exists for this operation — refusing to proceed without one.' );
+			}
 			return;
 		}
 		$from = (string) $row['state'];
 		if ( ! in_array( $from, $allowed_from, true ) ) {
-			return;
+			return; // Always a legitimate skip, never an error — see docblock.
 		}
-		$this->journal->transition( $change_set_id, $operation_index, $from, $to, (int) $row['state_version'], $extra_fields );
+		$ok = $this->journal->transition( $change_set_id, $operation_index, $from, $to, (int) $row['state_version'], $extra_fields );
+		if ( ! $ok && $strict ) {
+			throw new MutationException( 'operation_journal.write_failed', sprintf( 'Failed to durably record operation state %s -> %s.', $from, $to ) );
+		}
 	}
 
 	// ---------------------------------------------------------------- durable-state reflection

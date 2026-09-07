@@ -323,10 +323,20 @@ final class MutationEngine {
 				return MutationResult::staleState( $change_set->id(), $error, $rollbacks );
 			}
 
-			if ( null !== $on_event ) {
-				$on_event( 'apply_started', $operation, array() );
-			}
 			try {
+				// 'apply_started' fires INSIDE this try, not before it
+				// (Sprint 0.3A Phase 2 exit-gate fault-injection review,
+				// matrix item C): a durable caller's hook (
+				// AIOS\Mutation\DurableMutationCoordinator) can throw
+				// here to fail closed when it cannot durably record
+				// that this operation's apply() is about to run — and
+				// that failure must go through the exact same
+				// rollback-everything-already-applied path as a real
+				// apply() failure, not skip it by escaping this loop
+				// uncaught.
+				if ( null !== $on_event ) {
+					$on_event( 'apply_started', $operation, array() );
+				}
 				$operation->apply();
 				$applied[] = $operation;
 				if ( null !== $on_event ) {
