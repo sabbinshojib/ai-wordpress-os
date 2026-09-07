@@ -63,9 +63,10 @@ final class MultisiteLifecycleTest extends TestCase {
                 $this->assertTrue( in_array( 'wp_2_ai_os_audit_logs', $created, true ), 'blog 2 must be provisioned' );
                 $this->assertTrue( in_array( 'wp_3_ai_os_audit_logs', $created, true ), 'blog 3 must be provisioned' );
 
-                // All six tables (audit_logs, tool_executions, approvals,
-                // api_keys, rate_limits, change_sets), for all three sites.
-                $this->assertCount( 18, array_unique( $created ) );
+                // All seven tables (audit_logs, tool_executions, approvals,
+                // api_keys, rate_limits, change_sets, operation_journal),
+                // for all three sites.
+                $this->assertCount( 21, array_unique( $created ) );
         }
 
         /**
@@ -78,15 +79,15 @@ final class MultisiteLifecycleTest extends TestCase {
                 ( new Activator() )->activate( true );
 
                 switch_to_blog( 1 );
-                $this->assertEquals( array( '202501010001', '202509060001', '202509060002', '202509070001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001', '202509060002', '202509070001', '202509070002' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
 
                 switch_to_blog( 2 );
-                $this->assertEquals( array( '202501010001', '202509060001', '202509060002', '202509070001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001', '202509060002', '202509070001', '202509070002' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
 
                 switch_to_blog( 3 );
-                $this->assertEquals( array( '202501010001', '202509060001', '202509060002', '202509070001' ), get_option( 'ai_os_migrations' ) );
+                $this->assertEquals( array( '202501010001', '202509060001', '202509060002', '202509070001', '202509070002' ), get_option( 'ai_os_migrations' ) );
                 restore_current_blog();
         }
 

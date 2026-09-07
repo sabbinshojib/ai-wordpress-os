@@ -113,6 +113,7 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		// would default to (SEC-M5) — no new secret-management service.
 		$container->bind( Crypto::class, static fn(): Crypto => new Crypto() );
 		$container->bind( ChangeSetRepository::class, static fn( Container $c ): ChangeSetRepository => new ChangeSetRepository( $c->get( Database::class ), $c->get( Crypto::class ) ) );
+		$container->bind( \AIOS\Mutation\OperationJournalRepository::class, static fn( Container $c ): \AIOS\Mutation\OperationJournalRepository => new \AIOS\Mutation\OperationJournalRepository( $c->get( Database::class ), $c->get( Crypto::class ) ) );
 		$container->bind(
 			DurableMutationCoordinator::class,
 			static fn( Container $c ): DurableMutationCoordinator => new DurableMutationCoordinator(

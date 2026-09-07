@@ -14,12 +14,13 @@ namespace AIOS\Database;
 
 final class Database {
 
-        public const TABLE_AUDIT_LOGS      = 'audit_logs';
-        public const TABLE_TOOL_EXECUTIONS = 'tool_executions';
-        public const TABLE_APPROVALS       = 'approvals';
-        public const TABLE_API_KEYS        = 'api_keys';
-        public const TABLE_RATE_LIMITS     = 'rate_limits';
-        public const TABLE_CHANGE_SETS     = 'change_sets';
+        public const TABLE_AUDIT_LOGS        = 'audit_logs';
+        public const TABLE_TOOL_EXECUTIONS   = 'tool_executions';
+        public const TABLE_APPROVALS         = 'approvals';
+        public const TABLE_API_KEYS          = 'api_keys';
+        public const TABLE_RATE_LIMITS       = 'rate_limits';
+        public const TABLE_CHANGE_SETS       = 'change_sets';
+        public const TABLE_OPERATION_JOURNAL = 'operation_journal';
 
         /**
          * Canonical table list (migration + uninstall reference).
@@ -33,6 +34,7 @@ final class Database {
                 self::TABLE_API_KEYS,
                 self::TABLE_RATE_LIMITS,
                 self::TABLE_CHANGE_SETS,
+                self::TABLE_OPERATION_JOURNAL,
         );
 
         /**

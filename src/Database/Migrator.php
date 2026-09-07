@@ -23,6 +23,7 @@ final class Migrator {
                 Schema\Migration_202509060001_RateLimits::class,
                 Schema\Migration_202509060002_AuditIntegrity::class,
                 Schema\Migration_202509070001_ChangeSets::class,
+                Schema\Migration_202509070002_OperationJournal::class,
         );
 
         /**

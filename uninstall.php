@@ -71,6 +71,7 @@ function ai_os_uninstall_current_site(): void {
 		$wpdb->prefix . 'ai_os_api_keys',
 		$wpdb->prefix . 'ai_os_rate_limits',
 		$wpdb->prefix . 'ai_os_change_sets',
+		$wpdb->prefix . 'ai_os_operation_journal',
 	);
 
 	foreach ( $ai_os_tables as $ai_os_table ) {
