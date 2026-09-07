@@ -1,0 +1,26 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    # Sprint 0.3A CI foundation: this is the initial, honest baseline —
+    # not the ceiling. No phpstan-baseline.neon (blanket "ignore every
+    # existing error") is checked in: whatever the FIRST real run of
+    # `composer run stan` reports at this level is the true starting
+    # point, and CI is expected to be green against it, not against a
+    # suppressed copy of it. Raise `level` in a later sprint once this
+    # baseline is clean; do not add broad ignoreErrors patterns to get
+    # there faster.
+    level: 5
+
+    paths:
+        - src
+
+    tmpDir: build/phpstan
+
+    # AI WordPress OS boots against real WordPress at runtime; the
+    # WP function/class signatures come from php-stubs/wordpress-stubs
+    # via the phpstan-wordpress extension above, not from this
+    # repository's own tests/shim/ (that shim is a *test-time* WP
+    # substitute and is intentionally excluded from static analysis:
+    # `paths` above covers src/ only).
+    treatPhpDocTypesAsCertain: false

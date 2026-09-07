@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'sprint/**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+# A run superseded by a newer push on the same branch/PR is cancelled
+# rather than left to finish, so CI capacity isn't spent on stale commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------
+  # Required matrix: the two PHP versions Sprint 0.3A verifies locally
+  # (WP-like native suite, real PHPUnit bridge, acceptance, lint).
+  # ------------------------------------------------------------------
+  test:
+    name: "Test (PHP ${{ matrix.php }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '8.2', '8.3' ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, sodium, openssl, sqlite3, pdo
+          coverage: none
+
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-lock
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Syntax lint (php -l on every file)
+        run: composer run lint
+
+      - name: Native WP-like suite (tests/run.php)
+        run: composer test
+
+      - name: Real PHPUnit bridge (native-bridge suite)
+        run: composer run test:phpunit
+
+      - name: Acceptance suite
+        run: composer run acceptance
+
+  # ------------------------------------------------------------------
+  # Best-effort PHP 8.4 — included per Sprint 0.3A instructions ("PHP
+  # 8.4 in CI if reliable"), but not gating: this repository's local
+  # portable PHP 8.4 could not even start on the machine that authored
+  # this workflow (a Visual C++ runtime mismatch specific to that
+  # host, unrelated to the plugin), so 8.4 has never actually been
+  # exercised against this codebase. GitHub's hosted runners provide a
+  # correctly provisioned PHP 8.4 via setup-php, so this job is kept —
+  # but as non-blocking until a real run establishes it is clean.
+  # ------------------------------------------------------------------
+  test-php84:
+    name: "Test (PHP 8.4, best-effort)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, sodium, openssl, sqlite3, pdo
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Syntax lint (php -l on every file)
+        run: composer run lint
+
+      - name: Native WP-like suite (tests/run.php)
+        run: composer test
+
+      - name: Real PHPUnit bridge (native-bridge suite)
+        run: composer run test:phpunit
+
+      - name: Acceptance suite
+        run: composer run acceptance
+
+  # ------------------------------------------------------------------
+  # Static analysis: PHPStan (WordPress-aware via phpstan-wordpress +
+  # wordpress-stubs) and PHPCS (WordPress-Extra). See phpstan.neon.dist
+  # and phpcs.xml.dist for the honest-baseline rationale — this job is
+  # expected to be green against the level/ruleset actually checked
+  # in, not against a suppressed copy of it.
+  # ------------------------------------------------------------------
+  static-analysis:
+    name: Static analysis (PHPStan + PHPCS)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, sodium, openssl
+          coverage: none
+          tools: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: PHPStan
+        run: composer run stan
+
+      - name: PHPCS (WordPress-Extra)
+        run: composer run cs

@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<ruleset name="AI WordPress OS">
+	<description>
+		Sprint 0.3A CI foundation: WordPress-Extra, scoped to src/. Only
+		one sniff is excluded, for a structural reason (below) — not to
+		suppress findings. Whatever the first real `composer run cs` run
+		reports is the honest starting baseline for this codebase; fix
+		findings rather than adding new exclusions to reach green.
+	</description>
+
+	<file>src</file>
+
+	<arg value="sp"/>
+	<arg name="basepath" value="."/>
+	<arg name="colors"/>
+	<arg name="extensions" value="php"/>
+	<arg name="parallel" value="8"/>
+
+	<rule ref="WordPress-Extra">
+		<!--
+			This is a Composer/PSR-4 autoloaded plugin (AIOS\ -> src/),
+			not a classic WordPress includes/ tree: filenames are
+			StudlyCase class names (Crypto.php, ToolExecutor.php), which
+			is how every PSR-4 WordPress plugin in this style is written
+			and is incompatible by construction with WP's
+			class-name.php / interface-name.php file-naming sniff.
+		-->
+		<exclude name="WordPress.Files.FileName"/>
+	</rule>
+
+	<!-- Matches the plugin slug used at every __()/_e() call site in src/Admin. -->
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="ai-wordpress-os"/>
+			</property>
+		</properties>
+	</rule>
+
+	<config name="minimum_supported_wp_version" value="6.0"/>
+</ruleset>
