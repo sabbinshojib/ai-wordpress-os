@@ -21,7 +21,13 @@
  * @package AIOS\Tools\Ci
  */
 
-declare( strict_types=1 );
+// No declare(strict_types=1) here: `wp eval-file` runs this script's body
+// through PHP's eval() (stripping the opening <?php tag first), and PHP
+// does not allow strict_types to be declared inside eval()'d code at all
+// — regardless of position — failing with "strict_types declaration must
+// be the very first statement in the script" every time. This is the one
+// execution path this file has (see the workflow step in ci.yml); it has
+// no typed function signatures whose behavior depends on strict mode.
 
 use AIOS\Core\Plugin;
 use AIOS\Database\Database;
