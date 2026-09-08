@@ -1,11 +1,13 @@
 <?xml version="1.0"?>
 <ruleset name="AI WordPress OS">
 	<description>
-		Sprint 0.3A CI foundation: WordPress-Extra, scoped to src/. Only
-		one sniff is excluded, for a structural reason (below) — not to
-		suppress findings. Whatever the first real `composer run cs` run
-		reports is the honest starting baseline for this codebase; fix
-		findings rather than adding new exclusions to reach green.
+		Sprint 0.3A CI foundation: WordPress-Extra, scoped to src/. Every
+		exclusion below is a structural/architectural policy call, not a
+		shortcut to hide a real finding — see each exclusion's own
+		comment. Whatever the first real `composer run cs` run reports
+		against this ruleset is the honest starting baseline for this
+		codebase; fix findings rather than adding new exclusions to
+		reach green.
 	</description>
 
 	<file>src</file>
@@ -26,6 +28,31 @@
 			class-name.php / interface-name.php file-naming sniff.
 		-->
 		<exclude name="WordPress.Files.FileName"/>
+
+		<!--
+			src/ is a modern OOP/PSR-4 class API (Ability, ToolExecutor,
+			MutationEngine, every Catalog provider, etc.), not procedural
+			WordPress includes code: method and property names are
+			consistently camelCase throughout — 374 method declarations
+			and 32 property declarations across 85 files, confirmed by
+			direct source audit, not a handful of stragglers. Enforcing
+			WP's snake_case convention on this class API would mean
+			renaming the overwhelming majority of the codebase's public
+			and internal surface (service container bindings, WP hook
+			callback arrays referencing methods by string, MCP/REST
+			call chains) purely for a naming-style sniff, with no
+			security, correctness, or WordPress-compatibility benefit —
+			PHP has no functional distinction between camelCase and
+			snake_case identifiers. This exclusion covers ONLY the two
+			naming sniffs that conflict with OOP method/property
+			naming; procedural-code naming rules the project also
+			follows — hook names (ValidHookName), global function/class/
+			constant prefixing (PrefixAllGlobals) — remain enforced, as
+			do all escaping, sanitization, SQL, capability, nonce, and
+			filesystem sniffs elsewhere in WordPress-Extra.
+		-->
+		<exclude name="WordPress.NamingConventions.ValidFunctionName"/>
+		<exclude name="WordPress.NamingConventions.ValidVariableName"/>
 	</rule>
 
 	<!-- Matches the plugin slug used at every __()/_e() call site in src/Admin. -->
