@@ -11,15 +11,23 @@ namespace AIOS\Database\Repositories;
 
 use AIOS\Audit\AuditIntegrity;
 use AIOS\Database\Database;
+use AIOS\Database\DatabaseInterface;
 use AIOS\Support\Strings;
 
 final class AuditLogRepository {
 
-	private Database $db;
+	private DatabaseInterface $db;
 
 	private AuditIntegrity $integrity;
 
-	public function __construct( Database $db, ?AuditIntegrity $integrity = null ) {
+	/**
+	 * Accepts DatabaseInterface (not the concrete Database) so a test can
+	 * substitute a deterministic fault-injecting collaborator (see
+	 * tests/Support/FaultInjectingDatabase.php) without any production code
+	 * path changing — Database implements this, and production wiring
+	 * (AIOS\Core\CoreServiceProvider) always passes a real Database.
+	 */
+	public function __construct( DatabaseInterface $db, ?AuditIntegrity $integrity = null ) {
 		$this->db        = $db;
 		$this->integrity = $integrity ?? new AuditIntegrity();
 	}
