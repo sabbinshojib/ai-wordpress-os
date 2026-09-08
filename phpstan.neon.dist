@@ -20,8 +20,13 @@ parameters:
     # ABSPATH and boots the real plugin kernel). This stub gives
     # PHPStan just the constant *types*; see its header for why the
     # values are dummies, not copies of the real ones.
+    #
+    # WP_CLI / WP_CLI_Command / WP_CLI\Utils\format_items() are WP-CLI
+    # runtime symbols with no stub package in require-dev; see that
+    # stub's header for why they are declared here rather than ignored.
     bootstrapFiles:
         - tools/ci/phpstan-constants-stub.php
+        - tools/ci/phpstan-wpcli-stub.php
 
     tmpDir: build/phpstan
 

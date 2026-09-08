@@ -125,7 +125,7 @@ final class Onboarding {
 	}
 
 	/**
-	 * @return array<int, array{label: string, description: string}>
+	 * @return array<string, array{label: string, description: string}>
 	 */
 	private function modes(): array {
 		return array(
