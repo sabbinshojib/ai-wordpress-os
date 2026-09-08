@@ -375,7 +375,7 @@ surface** — everything here is container-bindable and directly tested, nothing
 can reach it yet (verified this pass via a repository-wide grep for `DurableMutationCoordinator`/
 `OperationJournalRepository`/`MutationEngine` under `src/Rest`, `src/Mcp`, `src/Tools`: no matches).
 
-**Implemented and tested** (442 tests as of this update, PHP 8.2 and 8.3 both green,
+**Implemented and tested** (452 tests as of this update, PHP 8.2 and 8.3 both green,
 13/13 acceptance):
 - The full in-memory pipeline: Policy → Snapshot → Diff → Approval → Apply → Verify →
   Audit → Rollback, in that order, for a single synchronous request.
@@ -508,15 +508,37 @@ can reach it yet (verified this pass via a repository-wide grep for `DurableMuta
   uncaught — `submit()`/`resume()` now wrap every engine call and `loadChangeSet()` in
   a `\Throwable` catch that explicitly marks the row `FAILED` rather than leaving it
   looking untouched.
+- **Audit fault injection** (`AuditFaultInjectionTest`, later pass in the same exit-gate
+  closure): `AuditLogRepository`'s constructor widened from the concrete `Database` to
+  `DatabaseInterface` (production wiring unchanged) so its own persistence layer can be
+  fault-injected the same way `ChangeSetRepository`/`OperationJournalRepository` already
+  are. Proves, via the real coordinator/engine path (not `AuditLogger` in isolation): a
+  failed audit write on policy denial never blocks the denial; a failed audit write after
+  a real apply never masks or fabricates the durable `COMPLETED` outcome; a failed audit
+  write during a real rollback never corrupts the rollback itself; a failed audit write
+  during `MANUAL_RECOVERY_REQUIRED` escalation still leaves the durable state correctly
+  transitioned (the transition happens before, and independent of, the audit write); no
+  secret-shaped argument material leaks when the write fails. Confirms `AuditLogger`'s
+  existing "never throws, returns 0 on failure" contract against a real forced failure,
+  not merely by code reading.
 - **Per-operation journal multisite isolation**: table-name resolution, row/recovery
   invisibility across a `switch_to_blog()`, and the full `DurableMutationCoordinator::
-  submit()` path are all tested. This review also found (not fixed — see below) a
-  pre-existing, plugin-wide test-shim limitation: `tests/shim/wp-functions.php`'s fake
-  SQL engine cannot parse a real multisite table name for any site but the first, and
-  its row storage is keyed by table short name regardless of site — every existing
-  "multisite isolation" test in this codebase, this pass's own included, only ever
-  writes on the default site and switches purely for a read-based absence check
-  afterward, which is the only pattern the shim can actually support.
+  submit()` path are all tested. This review also found, and a later pass in the same
+  exit-gate closure FIXED (BUG-006, shim-level only — see `docs/audits/BUG-GAP-REGISTER.md`),
+  a pre-existing, plugin-wide test-shim limitation: `tests/shim/wp-functions.php`'s fake
+  SQL engine could not parse a real multisite table name for any site but the first, and
+  its row storage was keyed by table short name regardless of site. The fix widened every
+  `wp_([a-z_]+)` table-name regex to `wp_((?:\d+_)?[a-z_]+)` and, because that same
+  capturing group now includes the digit blog-id prefix when present, the existing
+  single-group `$wpdb->tables[...]` keying automatically became a fully-qualified-table-name
+  key with no other call site changed — site 1 keeps its unprefixed short-name key exactly
+  as before, while site 2/3 get genuinely separate buckets. `JournalMultisiteIsolationTest`
+  now has two direct regressions (`test_journal_writes_succeed_independently_on_two_sites_with_the_same_key`,
+  `test_change_set_writes_succeed_independently_on_two_sites_with_the_same_key`) proving
+  real per-site WRITE isolation under the SAME id/key on two sites — something no test in
+  this codebase could previously do. This proves the SHIM's own in-memory model is no
+  longer actively wrong about isolation; it is not a claim about real MySQL — see the
+  CI-CONFIGURED-NOT-RUN caveat below for that.
 
 **Not implemented — explicit gaps, not silently deferred:**
 - **No automatic crash-recovery continuation.** `recover()` classifies and escalates;
@@ -526,14 +548,16 @@ can reach it yet (verified this pass via a repository-wide grep for `DurableMuta
   or a future, separately-scoped, operation-type-aware continuation engine.
 - **Fault injection does not cover a genuine mid-transaction failure** (an `INSERT`/
   `UPDATE` that fails partway through a multi-statement sequence at the real MySQL
-  driver level) or `AuditLogger` write failures (it already documents itself as
-  never-throws/returns-0-on-failure; fault-injecting that would need the same
-  `DatabaseInterface` seam extended to `AuditLogRepository`, not reached this pass).
-- **The test shim cannot genuinely prove per-site WRITE isolation** for this or any
-  other table (see the multisite finding above) — only real MySQL, via the
-  CI-CONFIGURED-NOT-RUN job below, can.
+  driver level) — a real MySQL driver behavior the shim cannot model at all; only the
+  CI-CONFIGURED-NOT-RUN job below can. (`AuditLogger` write-failure fault injection
+  itself is now covered — see the bullet above.)
+- **The test shim now proves per-site WRITE isolation at the shim's own in-memory
+  level** (see the multisite finding above) but this is still not real MySQL — table
+  charset/collation, index behavior, and real row-locking under genuine concurrent
+  connections remain provable only via the CI-CONFIGURED-NOT-RUN job below.
+  `MULTISITE_WRITE_VALIDATION` = SHIM-VALIDATED, not REAL-DB-VALIDATED.
 - **No real WordPress/MySQL execution — CI-CONFIGURED-NOT-RUN.** Every test above
-  (442 on both PHP 8.2 and 8.3, 13/13 acceptance) runs against this repository's own
+  (452 on both PHP 8.2 and 8.3, 13/13 acceptance) runs against this repository's own
   PHP-only WordPress shim (`tests/shim/wp-functions.php`), never a real MySQL/MariaDB
   instance or a real WordPress install — no such environment was available in the
   authoring sandbox, and system-wide MySQL/WordPress installation was explicitly out
