@@ -17,7 +17,12 @@ namespace {
 	class WP_CLI_Command {}
 
 	class WP_CLI {
-		public static function error( string $message ): void {}
+		/**
+		 * Real WP-CLI's `error()` defaults `$exit` to true, halting the
+		 * process — CliCommands.php never passes `$exit = false`, so
+		 * every call site here genuinely never returns.
+		 */
+		public static function error( string $message ): never {}
 		public static function line( string $message ): void {}
 		public static function success( string $message ): void {}
 		public static function add_command( string $name, string $callable ): void {}

@@ -31,7 +31,6 @@ final class CliCommands extends WP_CLI_Command {
 		$plugin = Plugin::instance();
 		if ( null === $plugin || ! $plugin->isBooted() ) {
 			WP_CLI::error( 'AI WordPress OS is not booted (check for boot errors).' );
-			return;
 		}
 
 		$container = $plugin->container();
@@ -80,7 +79,6 @@ final class CliCommands extends WP_CLI_Command {
 
 		if ( null !== $result['failed'] ) {
 			WP_CLI::error( sprintf( 'Migration %s failed: %s', $result['failed']['version'], $result['failed']['error'] ) );
-			return;
 		}
 
 		WP_CLI::success( 'Migrations complete.' );
@@ -101,7 +99,6 @@ final class CliCommands extends WP_CLI_Command {
 		$plugin = Plugin::instance();
 		if ( null === $plugin || ! $plugin->isBooted() ) {
 			WP_CLI::error( 'AI WordPress OS is not booted.' );
-			return;
 		}
 
 		$only_available = isset( $assoc_args['available'] );

@@ -16,11 +16,6 @@ namespace AIOS\Support;
 
 final class Diff {
 
-	/**
-	 * Single diff operation.
-	 *
-	 * @param string $type 'context' | 'add' | 'remove'
-	 */
 	public static function compute( string $old, string $new, int $context_lines = 3 ): array {
 		$old_lines = self::splitLines( $old );
 		$new_lines = self::splitLines( $new );
@@ -150,6 +145,7 @@ final class Diff {
 		}
 
 		$out    = array();
+		/** @var bool $in_hunk PHPStan: widen past the literal `false` below — this is mutated to true inside the loop before flush() ever reads it. */
 		$in_hunk = false;
 		$hunk_old_start = 0;
 		$hunk_new_start = 0;

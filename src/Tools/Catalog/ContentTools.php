@@ -66,7 +66,7 @@ final class ContentTools implements CatalogProviderInterface {
 					'additionalProperties' => false,
 				),
 				'level'              => 0,
-				'permissionCallback' => static function ( $user, array $args ) use ( $type ): bool {
+				'permissionCallback' => static function ( $user, array $args ): bool {
 					return $user->has_cap( 'edit_posts' ) || $user->has_cap( 'edit_pages' );
 				},
 				'executeCallback'    => static function ( array $args, $user ) use ( $type ): AbilityResult {
@@ -147,7 +147,7 @@ final class ContentTools implements CatalogProviderInterface {
 					$post = get_post( (int) ( $args['id'] ?? 0 ) );
 					return $post instanceof \WP_Post && ( $user->has_cap( 'edit_post', $post->ID ) || 'publish' === $post->post_status );
 				},
-				'executeCallback'    => static function ( array $args, $user ) use ( $type, $name ): AbilityResult {
+				'executeCallback'    => static function ( array $args, $user ) use ( $type ): AbilityResult {
 					$post = get_post( (int) ( $args['id'] ?? 0 ) );
 					if ( ! $post instanceof \WP_Post || $post->post_type !== $type ) {
 						return AbilityResult::error( 'content.not_found', "No {$type} found with that id.", 'not_found' );

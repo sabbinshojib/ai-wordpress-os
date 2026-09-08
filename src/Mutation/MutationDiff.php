@@ -20,9 +20,9 @@ final class MutationDiff {
 	public function __construct( public readonly array $operations ) {}
 
 	/**
-	 * @return sha256 hex over the diff's own safe (redacted, hash-only
-	 *         for large/binary/secret content) representation — never
-	 *         over raw unredacted content.
+	 * @return string sha256 hex digest over the diff's own safe
+	 *         (redacted, hash-only for large/binary/secret content)
+	 *         representation — never over raw unredacted content.
 	 */
 	public function hash(): string {
 		$canonical = array_map( static fn( OperationDiff $d ): array => $d->toArray(), $this->operations );

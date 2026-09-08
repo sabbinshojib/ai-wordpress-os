@@ -80,7 +80,9 @@ final class PostContentUpdateOperation extends AbstractOperation {
 	}
 
 	public function apply(): void {
-		$result = wp_update_post( array_merge( array( 'ID' => $this->postId ), $this->fields ), true );
+		/** @var array{ID: int, post_title?: string, post_content?: string, post_excerpt?: string} $postarr */
+		$postarr = array_merge( array( 'ID' => $this->postId ), $this->fields );
+		$result  = wp_update_post( $postarr, true );
 		if ( $result instanceof \WP_Error ) {
 			throw new MutationException( 'post_content_update.failed', 'Failed to update the post.' );
 		}
@@ -103,7 +105,9 @@ final class PostContentUpdateOperation extends AbstractOperation {
 		$state    = $snapshot->state();
 		$post_id  = (int) ( $state['post_id'] ?? $this->postId );
 		$original = (array) ( $state['original'] ?? array() );
-		$result   = wp_update_post( array_merge( array( 'ID' => $post_id ), $original ), true );
+		/** @var array{ID: int, post_title?: string, post_content?: string, post_excerpt?: string} $postarr */
+		$postarr  = array_merge( array( 'ID' => $post_id ), $original );
+		$result   = wp_update_post( $postarr, true );
 		if ( $result instanceof \WP_Error ) {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to restore the original post fields during rollback' );
 		}
