@@ -16,7 +16,7 @@ final class Migrator {
         public const MIGRATIONS_OPTION = 'ai_os_migrations';
 
         /**
-         * @var array<string, class-string<MigrationInterface>>
+         * @var array<int, class-string<MigrationInterface>>
          */
         private array $migration_classes = array(
                 Schema\Migration_202501010001_CoreTables::class,
@@ -27,7 +27,7 @@ final class Migrator {
         );
 
         /**
-         * @param array<string, class-string<MigrationInterface>>|null $classes Override for tests.
+         * @param array<int, class-string<MigrationInterface>>|null $classes Override for tests.
          */
         public function __construct( ?array $classes = null ) {
                 if ( null !== $classes ) {

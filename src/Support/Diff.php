@@ -173,7 +173,7 @@ final class Diff {
 				if ( ! $in_hunk ) {
 					$flush();
 					$in_hunk        = true;
-					$hunk_old_start = $op['old_no'] ?? $hunk_old_start ?: ( $index + 1 );
+					$hunk_old_start = $op['old_no'] ?? ( $index + 1 );
 					$hunk_new_start = $op['new_no'] ?? ( $index + 1 );
 				}
 				$prefix = match ( $op['type'] ) {

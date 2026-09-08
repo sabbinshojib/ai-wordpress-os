@@ -21,7 +21,6 @@ use AIOS\Security\Authenticator;
 use AIOS\Security\PermissionEngine;
 use AIOS\Settings\Settings;
 use AIOS\Support\StructuredError;
-use AIOS\Tools\ToolExecutor;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -34,12 +33,9 @@ final class RestTransport {
 
         private Settings $settings;
 
-        private ToolExecutor $executor;
-
-        public function __construct( Server $server, Settings $settings, ToolExecutor $executor ) {
-                $this->server    = $server;
-                $this->settings  = $settings;
-                $this->executor  = $executor;
+        public function __construct( Server $server, Settings $settings ) {
+                $this->server   = $server;
+                $this->settings = $settings;
         }
 
         /**

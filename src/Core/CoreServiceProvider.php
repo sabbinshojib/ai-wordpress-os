@@ -168,8 +168,7 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 			RestTransport::class,
 			static fn( Container $c ): RestTransport => new RestTransport(
 				$c->get( Server::class ),
-				$c->get( Settings::class ),
-				$c->get( ToolExecutor::class )
+				$c->get( Settings::class )
 			)
 		);
 
