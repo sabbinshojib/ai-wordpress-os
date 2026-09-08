@@ -1523,7 +1523,11 @@ function wp_update_attachment_metadata( int $id, mixed $data ): bool {
         return true;
 }
 
-function wp_create_image_subsizes( string $file ): array {
+function wp_create_image_subsizes( string $file, int $attachment_id ): array {
+        $GLOBALS['__wp_shim']['last_image_subsizes_call'] = array(
+                'file'          => $file,
+                'attachment_id' => $attachment_id,
+        );
         return array();
 }
 

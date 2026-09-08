@@ -306,6 +306,21 @@ final class ToolExecutorTest extends TestCase {
                 $this->assertStringContains( 'photo.png', (string) $result->data()['url'] );
         }
 
+        public function test_media_upload_passes_the_real_attachment_id_to_image_subsize_generation(): void {
+                $result = $this->executor()->execute(
+                        'media.upload',
+                        array( 'filename' => 'photo2.png', 'content' => base64_encode( 'fakepngbytes2' ) ),
+                        $this->adminUser(),
+                        'test'
+                );
+                $this->assertTrue( $result->ok(), (string) $result->error() );
+                $this->assertEquals(
+                        $result->data()['id'],
+                        $GLOBALS['__wp_shim']['last_image_subsizes_call']['attachment_id'] ?? null,
+                        'wp_create_image_subsizes() must receive the real attachment id, not be called without one'
+                );
+        }
+
         public function test_media_delete_is_approval_gated_in_safe_mode(): void {
                 $uploaded = $this->executor()->execute(
                         'media.upload',

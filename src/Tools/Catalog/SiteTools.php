@@ -59,7 +59,7 @@ final class SiteTools implements CatalogProviderInterface {
 							'counts'          => array(
 								'posts' => (int) ( $counts->publish ?? 0 ),
 								'pages' => (int) ( wp_count_posts( 'page' )->publish ?? 0 ),
-								'users' => (int) count_users()['total_users'] ?? 0,
+								'users' => (int) count_users()['total_users'],
 							),
 						)
 					);
@@ -99,7 +99,7 @@ final class SiteTools implements CatalogProviderInterface {
 						return AbilityResult::error( 'site.health_unavailable', 'The WordPress Site Health API is not available in this context.', 'unavailable' );
 					}
 
-					$health    = WP_Site_Health::get_instance();
+					$health    = \WP_Site_Health::get_instance();
 					$tests     = \WP_Site_Health::get_tests();
 					$results   = array();
 

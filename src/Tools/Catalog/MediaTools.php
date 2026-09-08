@@ -220,7 +220,9 @@ final class MediaTools implements CatalogProviderInterface {
                                                         'post_content'   => '',
                                                         'post_status'    => 'inherit',
                                                 ),
-                                                $upload['file']
+                                                $upload['file'],
+                                                0,
+                                                true
                                         );
                                         if ( is_wp_error( $attachment_id ) ) {
                                                 wp_delete_file( $upload['file'] );
@@ -234,7 +236,7 @@ final class MediaTools implements CatalogProviderInterface {
                                                 require_once $image_admin;
                                         }
                                         if ( function_exists( 'wp_create_image_subsizes' ) ) {
-                                                wp_update_attachment_metadata( $attachment_id, wp_create_image_subsizes( $upload['file'] ) );
+                                                wp_update_attachment_metadata( $attachment_id, wp_create_image_subsizes( $upload['file'], $attachment_id ) );
                                         }
 
                                         if ( ! empty( $args['alt'] ) ) {
