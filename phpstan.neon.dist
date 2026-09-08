@@ -15,6 +15,14 @@ parameters:
     paths:
         - src
 
+    # AI_WP_OS_* constants are defined in ai-wordpress-os.php, which is
+    # outside `paths` above and unsafe to load directly (it guards on
+    # ABSPATH and boots the real plugin kernel). This stub gives
+    # PHPStan just the constant *types*; see its header for why the
+    # values are dummies, not copies of the real ones.
+    bootstrapFiles:
+        - tools/ci/phpstan-constants-stub.php
+
     tmpDir: build/phpstan
 
     # CI-RUN-#1 (2026-09-08, GitHub Actions run 34181043803) failed with

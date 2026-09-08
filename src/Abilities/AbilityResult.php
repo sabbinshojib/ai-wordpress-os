@@ -69,7 +69,8 @@ final class AbilityResult {
         }
 
         /**
-         * @param array{type: string, id: string|int} $object
+         * @param string     $type Object type (e.g. 'post', 'attachment').
+         * @param string|int $id   Object identifier.
          */
         public function affected( string $type, string|int $id ): self {
                 $this->affectedObjects[] = array( 'type' => $type, 'id' => (string) $id );

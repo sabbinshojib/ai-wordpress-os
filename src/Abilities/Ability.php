@@ -85,8 +85,8 @@ final class Ability {
 	}
 
 	/**
-	 * @param Closure(WP_User|null, array<string, mixed>): bool       $permissionCallback
-	 * @param Closure(array<string, mixed>, WP_User|null): AbilityResult $executeCallback
+	 * @param Closure(\WP_User|null, array<string, mixed>): bool       $permissionCallback
+	 * @param Closure(array<string, mixed>, \WP_User|null): AbilityResult $executeCallback
 	 */
 	public function __construct(
 		string $name,
