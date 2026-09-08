@@ -27,7 +27,7 @@ jobs:
         php: [ '8.2', '8.3' ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
@@ -70,7 +70,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up PHP 8.4
         uses: shivammathur/setup-php@v2
@@ -146,7 +146,7 @@ jobs:
           --health-retries=10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -159,9 +159,14 @@ jobs:
       - name: Wait for MySQL
         run: |
           for i in $(seq 1 30); do
-            mysqladmin ping -h127.0.0.1 -uroot --silent && break
+            if mysqladmin ping -h127.0.0.1 -uroot --silent; then
+              echo "MySQL is ready."
+              exit 0
+            fi
             sleep 2
           done
+          echo "::error::MySQL did not become ready after 60s (30 retries at 2s)." >&2
+          exit 1
 
       - name: Download WordPress core
         run: wp core download --path=/tmp/wordpress --version=latest --locale=en_US
@@ -206,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2

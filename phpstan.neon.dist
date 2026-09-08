@@ -17,6 +17,19 @@ parameters:
 
     tmpDir: build/phpstan
 
+    # CI-RUN-#1 (2026-09-08, GitHub Actions run 34181043803) failed with
+    # "PHPStan worker reached configured 512M PHP memory limit" — the
+    # szepeviktor/phpstan-wordpress + php-stubs/wordpress-stubs stub set
+    # this project analyses against is large enough that a single worker
+    # loading it can approach/exceed 512M even for this project's small
+    # `src/` tree. The composer `stan` script now passes
+    # --memory-limit=1G (see composer.json). ubuntu-latest runners have
+    # 16G RAM and 4 cores, so phpstan's default parallelism (up to 4
+    # workers here) at 1G/worker stays well within runner capacity. If a
+    # future CI run still exhausts 1G, the next lever is capping
+    # `parallel.maximumNumberOfProcesses` below the CPU count — not
+    # raising the ceiling further or excluding source from analysis.
+
     # AI WordPress OS boots against real WordPress at runtime; the
     # WP function/class signatures come from php-stubs/wordpress-stubs
     # via the phpstan-wordpress extension above, not from this
