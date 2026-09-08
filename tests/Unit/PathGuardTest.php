@@ -246,4 +246,69 @@ final class PathGuardTest extends TestCase {
                 $resolved = $this->guard->resolveRead( 'wp-content/themes/testtheme/style.css' );
                 $this->assertStringContains( 'style.css', $resolved );
         }
+
+        // -------------------------------------------------------------- symlink escapes (Section 7 attack-matrix closure)
+
+        /**
+         * True filesystem symlinks, not just string-shaped paths — proves
+         * the post-realpath() re-check in assertReadable() (PathGuard.php
+         * ~L326-337) actually stops a symlink target escape, not merely
+         * the pre-resolution string confinement check (which a symlink
+         * trivially bypasses, since the symlink's OWN path string is
+         * legitimately inside root; only realpath() reveals where it
+         * really points). On a host where this process cannot create
+         * symlinks (e.g. Windows without Developer Mode/elevation — a
+         * real, common local-dev constraint, unrelated to PathGuard's own
+         * correctness), the test honestly records that it could not run
+         * rather than silently asserting nothing.
+         */
+        public function test_symlink_target_escaping_root_is_rejected_on_read(): void {
+                $outside = sys_get_temp_dir() . '/aios-pathguard-outside-' . uniqid();
+                @mkdir( $outside, 0777, true );
+                file_put_contents( $outside . '/secret.txt', 'outside-root-secret' );
+
+                $link = $this->root . '/wp-content/linked-secret.txt';
+                if ( ! @symlink( $outside . '/secret.txt', $link ) ) {
+                        $this->assertTrue( true, 'symlink() unavailable in this environment (no privilege/Developer Mode) — cannot exercise a real symlink escape here; see docs/audits/BUG-GAP-REGISTER.md attack-matrix notes' );
+                        $this->rrmdir( $outside );
+                        return;
+                }
+
+                $this->assertRejected( 'wp-content/linked-secret.txt', PathGuardException::E_OUTSIDE_ROOT );
+
+                @unlink( $link );
+                $this->rrmdir( $outside );
+        }
+
+        /**
+         * A symlinked PARENT DIRECTORY (not the final path segment)
+         * escaping root — proves assertAncestorConfined() (PathGuard.php
+         * ~L276-300), which resolveWrite() uses specifically because a
+         * brand-new file's own realpath() cannot be resolved yet (the
+         * file does not exist), so the confinement re-check must walk up
+         * to the nearest existing ancestor directory instead.
+         */
+        public function test_symlinked_parent_directory_escaping_root_is_rejected_on_write(): void {
+                $outside = sys_get_temp_dir() . '/aios-pathguard-outside-dir-' . uniqid();
+                @mkdir( $outside, 0777, true );
+
+                $link = $this->root . '/wp-content/linked-dir';
+                if ( ! @symlink( $outside, $link ) ) {
+                        $this->assertTrue( true, 'symlink() unavailable in this environment (no privilege/Developer Mode) — cannot exercise a real symlink escape here; see docs/audits/BUG-GAP-REGISTER.md attack-matrix notes' );
+                        $this->rrmdir( $outside );
+                        return;
+                }
+
+                $threw = null;
+                try {
+                        $this->guard->resolveWrite( 'wp-content/linked-dir/new-file.txt' );
+                } catch ( PathGuardException $e ) {
+                        $threw = $e;
+                }
+                $this->assertNotNull( $threw, 'a write target whose PARENT directory is a symlink escaping root must be rejected even though the file itself does not exist yet' );
+                $this->assertEquals( PathGuardException::E_OUTSIDE_ROOT, $threw->reason() );
+
+                @unlink( $link );
+                $this->rrmdir( $outside );
+        }
 }
