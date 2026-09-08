@@ -9,8 +9,31 @@
  * already asserts 21 = 7 tables × 3 sites, including
  * ai_os_operation_journal).
  *
+ * BUG-006 RESOLVED (later pass, same exit-gate closure — see
+ * docs/audits/BUG-GAP-REGISTER.md): the narrow two-part fix the
+ * SHIM LIMITATION note directly below recommended has been applied —
+ * (1) every `wp_([a-z_]+)` table-name regex in tests/shim/wp-functions.php
+ * widened to `wp_((?:\d+_)?[a-z_]+)` so a non-primary site's
+ * `wp_{blog_id}_...` table name parses at all, and (2) because that
+ * same capturing group now includes the digit prefix when present,
+ * `$wpdb->tables[...]`'s existing single-group keying automatically
+ * became a fully-qualified-table-name key with NO other call site
+ * changes needed — site 1 keeps its unprefixed short-name key exactly
+ * as before (every existing direct `$wpdb->tables['ai_os_...']` access
+ * across the test suite is site-1-only and therefore untouched), while
+ * site 2/3 now get their own genuinely separate `'2_ai_os_...'` /
+ * `'3_ai_os_...'` buckets instead of silently colliding into one. The
+ * new test_*_write_isolation tests below prove REAL per-site WRITE
+ * isolation (both sites' create() calls actually succeed and persist
+ * independently) — something every test in this file previously could
+ * not do, per the original finding preserved below for the historical
+ * record. Real WordPress/MySQL (CI-CONFIGURED-NOT-RUN) remains the
+ * only source of truth for genuine multi-table MySQL behavior (charset,
+ * index behavior, etc.); this shim fix only proves the shim's own
+ * in-memory model is no longer actively wrong about isolation.
+ *
  * SHIM LIMITATION FOUND THIS PASS (Section 17 — shim-vs-real-WordPress
- * parity review), not fixed: every test in this codebase that claims
+ * parity review), not fixed at the time: every test in this codebase that claims
  * multisite table isolation — this file's own first attempt at a
  * cross-site test included — only ever WRITES on the default site
  * (blog_id 1) and switches sites purely to perform a READ-based
@@ -159,6 +182,77 @@ final class JournalMultisiteIsolationTest extends TestCase {
 		$this->assertNull( $this->journal->load( $cs->id(), 0 ), "site 2 must never resolve a journal row for a ChangeSet that only ever existed on site 1" );
 		$this->assertNull( $this->repo->load( $cs->id() ), "site 2 must never resolve the parent ChangeSet row either" );
 		restore_current_blog();
+
+		$this->multisiteTearDown();
+	}
+
+	// -------------------------------------------------------------- BUG-006 regression: genuine per-site WRITE isolation
+
+	/**
+	 * The direct BUG-006 regression the bug register itself asked for:
+	 * create on site 1 AND site 2 with the SAME change_set_id/operation
+	 * index, assert each site reads back only its own value, assert
+	 * neither site's physical bucket reflects the other's row. Before
+	 * the fix, the site-2 create() call below did not merely "fail to
+	 * find" anything — it genuinely could not INSERT at all (the fake
+	 * SQL engine's table-name regex could not match `wp_2_...`) and
+	 * threw MutationException, which this test would have caught.
+	 */
+	public function test_journal_writes_succeed_independently_on_two_sites_with_the_same_key(): void {
+		$this->enableMultisite();
+
+		$opSite1 = new OptionUpdateOperation( 'aios_ms_write_iso', 'site-1-value' );
+		$rowSite1 = $this->journal->create( 'cs_ms_write_iso', 0, $opSite1, 1 );
+		$this->assertEquals( 1, $rowSite1['site_id'] );
+
+		switch_to_blog( 2 );
+		$opSite2  = new OptionUpdateOperation( 'aios_ms_write_iso', 'site-2-value' );
+		$rowSite2 = $this->journal->create( 'cs_ms_write_iso', 0, $opSite2, 2 );
+		$this->assertEquals( 2, $rowSite2['site_id'] );
+		$this->assertEquals( $opSite2->payloadFingerprint(), $rowSite2['payload_hash'], "site 2's row must hold ITS OWN payload, never site 1's" );
+
+		$loadedSite2 = $this->journal->load( 'cs_ms_write_iso', 0 );
+		$this->assertNotNull( $loadedSite2 );
+		$this->assertEquals( 2, $loadedSite2['site_id'] );
+		restore_current_blog();
+
+		$loadedSite1 = $this->journal->load( 'cs_ms_write_iso', 0 );
+		$this->assertNotNull( $loadedSite1, "site 1's row must still exist, untouched by site 2's write under the same key" );
+		$this->assertEquals( 1, $loadedSite1['site_id'] );
+		$this->assertEquals( $opSite1->payloadFingerprint(), $loadedSite1['payload_hash'] );
+
+		global $wpdb;
+		$this->assertCount( 1, $wpdb->tables['ai_os_operation_journal'] ?? array(), "site 1's own bucket must hold exactly its own row, no more" );
+		$this->assertCount( 1, $wpdb->tables['2_ai_os_operation_journal'] ?? array(), "site 2 must have its OWN separate bucket, not share site 1's" );
+
+		$this->multisiteTearDown();
+	}
+
+	public function test_change_set_writes_succeed_independently_on_two_sites_with_the_same_key(): void {
+		$this->enableMultisite();
+
+		$op1 = new OptionUpdateOperation( 'aios_ms_cs_write_iso', 'site-1-value' );
+		$cs1 = new ChangeSet( 1, array( $op1 ), array(), 1, 'user', 'cs_ms_write_iso_shared' );
+		$this->repo->create( $cs1, \AIOS\Mutation\ChangeSetFingerprint::compute( $cs1 ) );
+		$this->assertNotNull( $this->repo->load( 'cs_ms_write_iso_shared' ) );
+
+		switch_to_blog( 2 );
+		$op2 = new OptionUpdateOperation( 'aios_ms_cs_write_iso', 'site-2-value' );
+		$cs2 = new ChangeSet( 1, array( $op2 ), array(), 2, 'user', 'cs_ms_write_iso_shared' );
+		$this->repo->create( $cs2, \AIOS\Mutation\ChangeSetFingerprint::compute( $cs2 ) );
+
+		$loadedSite2 = $this->repo->load( 'cs_ms_write_iso_shared' );
+		$this->assertNotNull( $loadedSite2 );
+		$this->assertEquals( 2, $loadedSite2['site_id'] );
+		restore_current_blog();
+
+		$loadedSite1 = $this->repo->load( 'cs_ms_write_iso_shared' );
+		$this->assertNotNull( $loadedSite1, "site 1's ChangeSet row must survive site 2 creating one under the same id" );
+		$this->assertEquals( 1, $loadedSite1['site_id'] );
+
+		global $wpdb;
+		$this->assertCount( 1, $wpdb->tables['ai_os_change_sets'] ?? array() );
+		$this->assertCount( 1, $wpdb->tables['2_ai_os_change_sets'] ?? array() );
 
 		$this->multisiteTearDown();
 	}

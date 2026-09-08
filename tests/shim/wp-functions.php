@@ -1041,16 +1041,16 @@ class wpdb {
         }
 
         private function tableFor( string $sql ): ?string {
-                if ( preg_match( '/from\s+`?wp_([a-z_]+)`?/i', $sql, $m ) ) {
+                if ( preg_match( '/from\s+`?wp_((?:\d+_)?[a-z_]+)`?/i', $sql, $m ) ) {
                         return $m[1];
                 }
-                if ( preg_match( '/insert\s+into\s+`?wp_([a-z_]+)`?/i', $sql, $m ) ) {
+                if ( preg_match( '/insert\s+into\s+`?wp_((?:\d+_)?[a-z_]+)`?/i', $sql, $m ) ) {
                         return $m[1];
                 }
-                if ( preg_match( '/update\s+`?wp_([a-z_]+)`?/i', $sql, $m ) ) {
+                if ( preg_match( '/update\s+`?wp_((?:\d+_)?[a-z_]+)`?/i', $sql, $m ) ) {
                         return $m[1];
                 }
-                if ( preg_match( '/delete\s+from\s+`?wp_([a-z_]+)`?/i', $sql, $m ) ) {
+                if ( preg_match( '/delete\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?/i', $sql, $m ) ) {
                         return $m[1];
                 }
                 return null;
@@ -1065,7 +1065,7 @@ class wpdb {
                 // ON DUPLICATE KEY UPDATE engine — this shim is a small,
                 // deliberately scoped test double (see the class docblock).
                 if ( preg_match(
-                        '/insert\s+into\s+`?wp_([a-z_]+)`?\s*\(\s*rate_key\s*,\s*count\s*,\s*reset_at\s*\)\s*values\s*\(\s*\'((?:[^\'\\\\]|\\\\.)*)\'\s*,\s*1\s*,\s*\'((?:[^\'\\\\]|\\\\.)*)\'\s*\)\s*on\s+duplicate\s+key\s+update.*?reset_at\s*<=\s*\'((?:[^\'\\\\]|\\\\.)*)\'/is',
+                        '/insert\s+into\s+`?wp_((?:\d+_)?[a-z_]+)`?\s*\(\s*rate_key\s*,\s*count\s*,\s*reset_at\s*\)\s*values\s*\(\s*\'((?:[^\'\\\\]|\\\\.)*)\'\s*,\s*1\s*,\s*\'((?:[^\'\\\\]|\\\\.)*)\'\s*\)\s*on\s+duplicate\s+key\s+update.*?reset_at\s*<=\s*\'((?:[^\'\\\\]|\\\\.)*)\'/is',
                         $sql,
                         $m
                 ) ) {
@@ -1108,7 +1108,7 @@ class wpdb {
                 }
 
                 // INSERT parsing for our repository inserts.
-                if ( preg_match( '/insert\s+into\s+`?wp_([a-z_]+)`?\s*\(([^)]+)\)\s*values\s*\((.+)\)/is', $sql, $m ) ) {
+                if ( preg_match( '/insert\s+into\s+`?wp_((?:\d+_)?[a-z_]+)`?\s*\(([^)]+)\)\s*values\s*\((.+)\)/is', $sql, $m ) ) {
                         $table = $m[1];
                         $columns = array_map( 'trim', explode( ',', $m[2] ) );
                         // Split values by commas outside quotes.
@@ -1148,7 +1148,7 @@ class wpdb {
                         return 1;
                 }
 
-                if ( preg_match( '/update\s+`?wp_([a-z_]+)`?\s+set\s+(.+?)\s+where\s+(.+)$/is', $sql, $m ) ) {
+                if ( preg_match( '/update\s+`?wp_((?:\d+_)?[a-z_]+)`?\s+set\s+(.+?)\s+where\s+(.+)$/is', $sql, $m ) ) {
                         $table = $m[1];
                         $sets = array();
                         foreach ( explode( ',', $m[2] ) as $assignment ) {
@@ -1174,7 +1174,7 @@ class wpdb {
                         return $updated;
                 }
 
-                if ( preg_match( '/delete\s+from\s+`?wp_([a-z_]+)`?\s+where\s+(.+)$/is', $sql, $m ) ) {
+                if ( preg_match( '/delete\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?\s+where\s+(.+)$/is', $sql, $m ) ) {
                         $table = $m[1];
                         $kept = array();
                         $deleted = 0;
@@ -1265,12 +1265,12 @@ class wpdb {
                 }
 
                 // WHERE-less recent-listing (ORDER BY id DESC LIMIT n).
-                if ( preg_match( '/select\s+\*\s+from\s+`?wp_([a-z_]+)`?\s+order\s+by\s+id\s+desc\s+limit\s+(\d+)/i', $sql, $m ) ) {
+                if ( preg_match( '/select\s+\*\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?\s+order\s+by\s+id\s+desc\s+limit\s+(\d+)/i', $sql, $m ) ) {
                         $rows = array_slice( array_reverse( $this->tables[ $m[1] ] ?? array() ), 0, (int) $m[2] );
                         return $rows;
                 }
 
-                if ( preg_match( '/select\s+(?:\*|id)\s+from\s+`?wp_([a-z_]+)`?\s+where\s+(.+?)(?:\s+order\s+by\s+(.+))?$/is', $sql, $m ) ) {
+                if ( preg_match( '/select\s+(?:\*|id)\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?\s+where\s+(.+?)(?:\s+order\s+by\s+(.+))?$/is', $sql, $m ) ) {
                         $table = $m[1];
                         $rows = array_values( array_filter( $this->tables[ $table ] ?? array(), fn( array $r ): bool => $this->rowMatches( $r, $m[2] ) ) );
                         if ( isset( $m[3] ) ) {
@@ -1300,7 +1300,7 @@ class wpdb {
                 if ( ! preg_match( '/^select\s+(count|sum|avg|coalesce)\s*\(/i', trim( $sql ) ) ) {
                         return null;
                 }
-                if ( ! preg_match( '/^select\s+(.+?)\s+from\s+`?wp_([a-z_]+)`?(?:\s+where\s+(.+))?$/is', trim( $sql ), $m ) ) {
+                if ( ! preg_match( '/^select\s+(.+?)\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?(?:\s+where\s+(.+))?$/is', trim( $sql ), $m ) ) {
                         return null;
                 }
 
@@ -1425,11 +1425,11 @@ class wpdb {
         }
 
         public function get_var( string $sql ): mixed {
-                if ( preg_match( '/select\s+count\(\*\)\s+from\s+`?wp_([a-z_]+)`?\s+where\s+(.+)$/is', $sql, $m ) ) {
+                if ( preg_match( '/select\s+count\(\*\)\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?\s+where\s+(.+)$/is', $sql, $m ) ) {
                         $rows = array_filter( $this->tables[ $m[1] ] ?? array(), fn( array $r ): bool => $this->rowMatches( $r, $m[2] ) );
                         return (string) count( $rows );
                 }
-                if ( preg_match( '/select\s+count\(\*\)\s+from\s+`?wp_([a-z_]+)`?$/i', $sql, $m ) ) {
+                if ( preg_match( '/select\s+count\(\*\)\s+from\s+`?wp_((?:\d+_)?[a-z_]+)`?$/i', $sql, $m ) ) {
                         return (string) count( $this->tables[ $m[1] ] ?? array() );
                 }
                 // Aggregates (SUM/AVG) return "0" — sufficient for tests.
