@@ -99,7 +99,6 @@ final class SiteTools implements CatalogProviderInterface {
 						return AbilityResult::error( 'site.health_unavailable', 'The WordPress Site Health API is not available in this context.', 'unavailable' );
 					}
 
-					$health    = \WP_Site_Health::get_instance();
 					$tests     = \WP_Site_Health::get_tests();
 					$results   = array();
 
@@ -118,7 +117,7 @@ final class SiteTools implements CatalogProviderInterface {
 					return AbilityResult::success(
 						array(
 							'site_status' => array(
-								'good'        => $health->get_test_php_extension_count ? 0 : 0,
+								'good'        => 0,
 								'critical'    => 0,
 								'recommended' => 0,
 							),
