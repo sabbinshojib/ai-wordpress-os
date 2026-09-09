@@ -369,8 +369,15 @@ final class Crypto implements CryptoInterface {
                 if ( ! function_exists( 'openssl_decrypt' ) ) {
                         return array( 'available' => false, 'plaintext' => null );
                 }
-                // iv(12) + tag(16) + ciphertext
-                if ( strlen( $payload ) <= 28 ) {
+                // iv(12) + tag(16) + ciphertext. An empty plaintext
+                // legitimately produces a 28-byte payload (iv + tag, zero
+                // ciphertext bytes) and openssl_decrypt() authenticates it
+                // through the tag exactly like any other length — rejecting
+                // length 28 here turned every round-tripped empty string
+                // into an auth-failure null on openssl-only hosts (sodium
+                // hosts were unaffected). Only STRICTLY shorter payloads
+                // are structurally invalid.
+                if ( strlen( $payload ) < 28 ) {
                         return array( 'available' => true, 'plaintext' => null );
                 }
                 $iv         = substr( $payload, 0, 12 );

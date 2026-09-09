@@ -199,11 +199,37 @@ final class PathGuardTest extends TestCase {
         /**
          * Case variation on a legitimate, non-protected file must still
          * resolve on a case-insensitive filesystem (the guard must not be
-         * accidentally stricter than the real filesystem).
+         * accidentally stricter than the real filesystem) — and on a
+         * case-sensitive filesystem (Linux CI runners) a differently-cased
+         * path must fail as not-found rather than resolve, because the
+         * filesystem itself does not resolve it either. The assertion
+         * below probes the real filesystem first and then requires the
+         * guard to agree with it, so the same test is correct on both
+         * Windows-style and POSIX hosts.
          */
         public function test_case_variation_on_allowed_file_still_resolves(): void {
-                $resolved = $this->guard->resolveRead( 'WP-CONTENT/THEMES/TESTTHEME/FUNCTIONS.PHP' );
-                $this->assertStringContains( 'functions.php', strtolower( $resolved ) );
+                $probe = file_exists( $this->root . '/WP-CONTENT/THEMES/TESTTHEME/FUNCTIONS.PHP' );
+
+                $threw = null;
+                $resolved = null;
+                try {
+                        $resolved = $this->guard->resolveRead( 'WP-CONTENT/THEMES/TESTTHEME/FUNCTIONS.PHP' );
+                } catch ( PathGuardException $e ) {
+                        $threw = $e;
+                }
+
+                if ( ! $probe ) {
+                        // Case-sensitive host: the guard must agree with the
+                        // filesystem and report not-found — never resolve a
+                        // path the filesystem cannot, and never misclassify
+                        // it as protected/outside-root.
+                        $this->assertNotNull( $threw, 'case variation must not resolve on a case-sensitive filesystem' );
+                        $this->assertEquals( PathGuardException::E_NOT_FOUND, $threw->reason(), 'case variation must be reported as not-found, matching the real filesystem' );
+                        return;
+                }
+
+                $this->assertNull( $threw, 'the guard must not be stricter than a case-insensitive filesystem' );
+                $this->assertStringContains( 'functions.php', strtolower( (string) $resolved ) );
         }
 
         /**
