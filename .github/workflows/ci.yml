@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: [ main, 'sprint/**' ]
+  # The repository's default branch is sprint/0.3-security-ci and no
+  # `main` branch exists yet, so pull requests target sprint branches
+  # during this phase of the roadmap. CI must run for those PRs too,
+  # otherwise pull-request verification is structurally impossible.
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'sprint/**' ]
   workflow_dispatch: {}
 
 # A run superseded by a newer push on the same branch/PR is cancelled
@@ -119,17 +123,15 @@ jobs:
   #     MySQL row-locking semantics rather than the shim's in-memory
   #     array.
   #
-  # THIS WORKFLOW HAS NEVER BEEN EXECUTED. It was authored in an
-  # environment with no GitHub Actions runner and explicit instructions
-  # not to install MySQL/WordPress system-wide locally. Whether it is
-  # syntactically valid GitHub Actions YAML and whether the `wp eval`
-  # smoke script is correct WordPress/PHP is UNVERIFIED. Do not treat
-  # any claim in docs/audits/ that cites "real DB" as more than
-  # CI-CONFIGURED-NOT-RUN until an actual run of this job is observed
-  # green in the Actions tab.
+  # VERIFIED GREEN as of run 34271861192 (2026-09): boots an ephemeral
+  # MySQL 8.0 container, installs throwaway WordPress core + this plugin
+  # via WP-CLI, runs every real migration through real dbDelta, and
+  # executes the tools/ci/real-db-smoke.php checks (tables, columns,
+  # encrypted CRUD round-trip, CAS transition). See
+  # docs/audits/SPRINT-0.3-PHASE2-EXIT-GATE-REPORT.md for the record.
   # ------------------------------------------------------------------
   test-real-wp-mysql:
-    name: "Real WordPress + MySQL smoke test (CI-CONFIGURED-NOT-RUN)"
+    name: "Real WordPress + MySQL smoke test"
     runs-on: ubuntu-latest
     services:
       mysql:

@@ -13,3 +13,6 @@ npm-debug.log
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# PHPStan analysis cache (composer run stan)
+/build/phpstan/
