@@ -15,23 +15,54 @@ use WP_REST_Response;
 
 final class LogsController extends AbstractController {
 
-	public function register( string $namespace ): void {
+	public function register( string $rest_namespace ): void {
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/logs',
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'list' ),
 				'permission_callback' => array( $this, 'canApprove' ),
 				'args'                => array(
-					'user_id' => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
-					'tool'    => array( 'type' => 'string', 'maxLength' => 190, 'sanitize_callback' => 'sanitize_text_field' ),
-					'status'  => array( 'type' => 'string', 'enum' => array( 'ok', 'error', 'blocked', 'rejected', 'approval_required' ) ),
-					'risk'    => array( 'type' => 'integer', 'minimum' => 0, 'maximum' => 4 ),
-					'since'   => array( 'type' => 'string', 'pattern' => '^\d{4}-\d{2}-\d{2}' ),
-					'search'  => array( 'type' => 'string', 'maxLength' => 100, 'sanitize_callback' => 'sanitize_text_field' ),
-					'limit'   => array( 'type' => 'integer', 'default' => 50, 'minimum' => 1, 'maximum' => 200 ),
-					'page'    => array( 'type' => 'integer', 'default' => 1, 'minimum' => 1, 'maximum' => 1000 ),
+					'user_id' => array(
+						'type'              => 'integer',
+						'sanitize_callback' => 'absint',
+					),
+					'tool'    => array(
+						'type'              => 'string',
+						'maxLength'         => 190,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'status'  => array(
+						'type' => 'string',
+						'enum' => array( 'ok', 'error', 'blocked', 'rejected', 'approval_required' ),
+					),
+					'risk'    => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+						'maximum' => 4,
+					),
+					'since'   => array(
+						'type'    => 'string',
+						'pattern' => '^\d{4}-\d{2}-\d{2}',
+					),
+					'search'  => array(
+						'type'              => 'string',
+						'maxLength'         => 100,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'limit'   => array(
+						'type'    => 'integer',
+						'default' => 50,
+						'minimum' => 1,
+						'maximum' => 200,
+					),
+					'page'    => array(
+						'type'    => 'integer',
+						'default' => 1,
+						'minimum' => 1,
+						'maximum' => 1000,
+					),
 				),
 			)
 		);
@@ -66,9 +97,9 @@ final class LogsController extends AbstractController {
 
 		return $this->json(
 			array(
-				'items'  => $items,
-				'count'  => count( $items ),
-				'stats'  => $audit->repository()->stats(),
+				'items' => $items,
+				'count' => count( $items ),
+				'stats' => $audit->repository()->stats(),
 			)
 		);
 	}

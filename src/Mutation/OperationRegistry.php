@@ -57,13 +57,13 @@ final class OperationRegistry {
 	 */
 	public static function serialize( ChangeSet $change_set ): array {
 		return array(
-			'schema_version'     => self::SCHEMA_VERSION,
-			'change_set_id'      => $change_set->id(),
-			'site_id'            => $change_set->siteId(),
-			'principal_user_id'  => $change_set->principalUserId(),
-			'principal_type'     => $change_set->principalType(),
-			'metadata'           => $change_set->metadata(),
-			'operations'         => array_map(
+			'schema_version'    => self::SCHEMA_VERSION,
+			'change_set_id'     => $change_set->id(),
+			'site_id'           => $change_set->siteId(),
+			'principal_user_id' => $change_set->principalUserId(),
+			'principal_type'    => $change_set->principalType(),
+			'metadata'          => $change_set->metadata(),
+			'operations'        => array_map(
 				static fn( ChangeOperationInterface $op ): array => array(
 					'type' => $op->type(),
 					'spec' => $op->toSpec(),

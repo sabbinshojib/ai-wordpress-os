@@ -34,6 +34,7 @@ final class Onboarding {
 			wp_die( esc_html__( 'You do not have permission to access AI WordPress OS onboarding.', 'ai-wordpress-os' ) );
 		}
 
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce is verified inside handleSubmission() via check_admin_referer() immediately below this call.
 		$submitted = isset( $_POST['ai_os_onboarding_submit'] ) ? $this->handleSubmission() : null;
 
 		/** @var Settings $settings */
@@ -74,7 +75,10 @@ final class Onboarding {
 								<label>
 									<input type="radio" name="ai_os_mode" value="<?php echo esc_attr( $value ); ?>" <?php checked( $mode, $value ); ?> />
 									<strong><?php echo esc_html( $mode_info['label'] ); ?></strong>
-									<?php if ( 'safe' === $value ) : ?><span class="ai-os-badge ai-os-badge-recommended"><?php esc_html_e( 'Recommended', 'ai-wordpress-os' ); ?></span><?php endif; ?>
+									<?php
+									if ( 'safe' === $value ) :
+										?>
+										<span class="ai-os-badge ai-os-badge-recommended"><?php esc_html_e( 'Recommended', 'ai-wordpress-os' ); ?></span><?php endif; ?>
 								</label>
 							</th>
 							<td>
@@ -129,7 +133,7 @@ final class Onboarding {
 	 */
 	private function modes(): array {
 		return array(
-			Settings::MODE_SAFE => array(
+			Settings::MODE_SAFE     => array(
 				'label'       => __( 'Safe mode', 'ai-wordpress-os' ),
 				'description' => __( 'AI can inspect the site and make safe writes (create/update posts, pages, media). Everything sensitive or destructive requires your explicit approval first.', 'ai-wordpress-os' ),
 			),
@@ -175,7 +179,7 @@ final class Onboarding {
 			/** @var ApiKeyManager $keys */
 			$keys = $this->container->get( ApiKeyManager::class );
 			try {
-				$issued = $keys->issue(
+				$issued     = $keys->issue(
 					array(
 						'label'     => $label,
 						'user_id'   => get_current_user_id(),
@@ -193,7 +197,7 @@ final class Onboarding {
 			/** @var ContextEngine $context */
 			$context = $this->container->get( ContextEngine::class );
 			$context->siteMap( true );
-		} catch ( \Throwable $e ) {
+		} catch ( \Throwable $e ) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- the warm-up scan is best-effort by design.
 			// Non-fatal.
 		}
 
@@ -213,8 +217,8 @@ final class Onboarding {
 		);
 
 		return array(
-			'mode'     => $mode,
-			'api_key'  => $issued_key,
+			'mode'    => $mode,
+			'api_key' => $issued_key,
 		);
 	}
 }

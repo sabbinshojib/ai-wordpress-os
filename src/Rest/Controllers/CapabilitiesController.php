@@ -20,20 +20,25 @@ use WP_REST_Response;
 
 final class CapabilitiesController extends AbstractController {
 
-	public function register( string $namespace ): void {
+	public function register( string $rest_namespace ): void {
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/capabilities/(?P<user_id>\d+)',
 			array(
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'state' ),
 				'permission_callback' => array( $this, 'canManage' ),
-				'args'                => array( 'user_id' => array( 'type' => 'integer', 'required' => true ) ),
+				'args'                => array(
+					'user_id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
 			)
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/capabilities/grant',
 			array(
 				'methods'             => 'POST',
@@ -44,7 +49,7 @@ final class CapabilitiesController extends AbstractController {
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/capabilities/revoke',
 			array(
 				'methods'             => 'POST',
@@ -60,7 +65,12 @@ final class CapabilitiesController extends AbstractController {
 	 */
 	private function mutationArgs(): array {
 		return array(
-			'user_id'    => array( 'type' => 'integer', 'required' => true, 'minimum' => 1, 'sanitize_callback' => 'absint' ),
+			'user_id'    => array(
+				'type'              => 'integer',
+				'required'          => true,
+				'minimum'           => 1,
+				'sanitize_callback' => 'absint',
+			),
 			'capability' => array(
 				'type'     => 'string',
 				'required' => true,
@@ -100,12 +110,28 @@ final class CapabilitiesController extends AbstractController {
 
 	private function mutate( WP_REST_Request $request, string $action ): WP_REST_Response {
 		if ( ! $this->verifyNonce( $request ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_nonce',
+						'message' => 'Nonce verification failed.',
+					),
+				),
+				403
+			);
 		}
 
 		$acting = wp_get_current_user();
 		if ( ! $acting->exists() ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_unauthenticated', 'message' => 'Authentication required.' ) ), 401 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_unauthenticated',
+						'message' => 'Authentication required.',
+					),
+				),
+				401
+			);
 		}
 
 		$target_user_id = (int) $request->get_param( 'user_id' );
@@ -138,6 +164,14 @@ final class CapabilitiesController extends AbstractController {
 			StructuredError::TYPE_VALIDATION => 422,
 			default                          => 400,
 		};
-		return $this->json( array( 'error' => array( 'code' => $error->code(), 'message' => $error->message() ) ), $status );
+		return $this->json(
+			array(
+				'error' => array(
+					'code'    => $error->code(),
+					'message' => $error->message(),
+				),
+			),
+			$status
+		);
 	}
 }

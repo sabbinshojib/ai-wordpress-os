@@ -23,7 +23,7 @@ final class JsonRpcResponse {
 	/**
 	 * MCP-specific.
 	 */
-	public const E_UNSUPPORTED      = -32000;
+	public const E_UNSUPPORTED = -32000;
 
 	private function __construct(
 		private string|int|null $id,
@@ -56,8 +56,8 @@ final class JsonRpcResponse {
 	 * @param array<string, mixed> $payload Full response body.
 	 */
 	public static function fromArray( array $payload ): self {
-		$id    = $payload['id'] ?? null;
-		$error = isset( $payload['error'] ) && is_array( $payload['error'] ) ? $payload['error'] : null;
+		$id     = $payload['id'] ?? null;
+		$error  = isset( $payload['error'] ) && is_array( $payload['error'] ) ? $payload['error'] : null;
 		$result = isset( $payload['result'] ) && is_array( $payload['result'] ) ? $payload['result'] : null;
 		return new self( is_string( $id ) || is_int( $id ) ? $id : null, $result, $error );
 	}

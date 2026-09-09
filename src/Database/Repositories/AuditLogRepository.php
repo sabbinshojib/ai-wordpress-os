@@ -150,9 +150,9 @@ final class AuditLogRepository {
 			$values[] = $filters['since'];
 		}
 		if ( ! empty( $filters['search'] ) && is_string( $filters['search'] ) ) {
-			$where[]  = '(tool LIKE %s OR action LIKE %s OR error LIKE %s)';
-			$like     = '%' . $this->db->escLike( Strings::truncate( $filters['search'], 100 ) ) . '%';
-			$values   = array_merge( $values, array( $like, $like, $like ) );
+			$where[] = '(tool LIKE %s OR action LIKE %s OR error LIKE %s)';
+			$like    = '%' . $this->db->escLike( Strings::truncate( $filters['search'], 100 ) ) . '%';
+			$values  = array_merge( $values, array( $like, $like, $like ) );
 		}
 
 		$sql = 'SELECT * FROM ' . $this->table();
@@ -199,10 +199,10 @@ final class AuditLogRepository {
 		$total = (int) $this->db->getVar( 'SELECT COUNT(*) FROM ' . $this->table() );
 
 		return array(
-			'total'    => $total,
-			'total_24h' => (int) ( $row['total_24h'] ?? 0 ),
-			'blocked_24h' => (int) ( $row['blocked_24h'] ?? 0 ),
-			'errors_24h' => (int) ( $row['errors_24h'] ?? 0 ),
+			'total'        => $total,
+			'total_24h'    => (int) ( $row['total_24h'] ?? 0 ),
+			'blocked_24h'  => (int) ( $row['blocked_24h'] ?? 0 ),
+			'errors_24h'   => (int) ( $row['errors_24h'] ?? 0 ),
 			'rejected_24h' => (int) ( $row['rejected_24h'] ?? 0 ),
 		);
 	}
@@ -221,15 +221,15 @@ final class AuditLogRepository {
 	 * @return array<string, mixed>
 	 */
 	private function hydrate( array $row ): array {
-		$row['id']            = (int) $row['id'];
-		$row['user_id']       = (int) $row['user_id'];
-		$row['risk']          = (int) $row['risk'];
-		$row['duration_ms']   = (int) $row['duration_ms'];
-		$row['approval_id']   = null === $row['approval_id'] ? null : (int) $row['approval_id'];
-		$row['rollback_id']   = null === $row['rollback_id'] ? null : (int) $row['rollback_id'];
-		$row['affected_objects'] = null === $row['affected_objects'] ? null : json_decode( (string) $row['affected_objects'], true );
-		$row['affected_files']   = null === $row['affected_files'] ? null : json_decode( (string) $row['affected_files'], true );
-		$row['args_decoded']  = null === $row['args_json'] ? null : json_decode( (string) $row['args_json'], true );
+		$row['id']                = (int) $row['id'];
+		$row['user_id']           = (int) $row['user_id'];
+		$row['risk']              = (int) $row['risk'];
+		$row['duration_ms']       = (int) $row['duration_ms'];
+		$row['approval_id']       = null === $row['approval_id'] ? null : (int) $row['approval_id'];
+		$row['rollback_id']       = null === $row['rollback_id'] ? null : (int) $row['rollback_id'];
+		$row['affected_objects']  = null === $row['affected_objects'] ? null : json_decode( (string) $row['affected_objects'], true );
+		$row['affected_files']    = null === $row['affected_files'] ? null : json_decode( (string) $row['affected_files'], true );
+		$row['args_decoded']      = null === $row['args_json'] ? null : json_decode( (string) $row['args_json'], true );
 		$row['integrity_version'] = isset( $row['integrity_version'] ) && null !== $row['integrity_version'] ? (int) $row['integrity_version'] : null;
 		$row['chain_seq']         = isset( $row['chain_seq'] ) && null !== $row['chain_seq'] ? (int) $row['chain_seq'] : null;
 		return $row;
@@ -242,7 +242,13 @@ final class AuditLogRepository {
 		if ( empty( $ip ) ) {
 			return null;
 		}
-		$packed = @inet_pton( $ip );
+		// Validate first so inet_pton() cannot emit a warning on
+		// malformed input; unsupported formats stay null as before.
+		$valid = filter_var( $ip, FILTER_VALIDATE_IP );
+		if ( false === $valid ) {
+			return null;
+		}
+		$packed = inet_pton( $valid );
 		return false === $packed ? null : $packed;
 	}
 }

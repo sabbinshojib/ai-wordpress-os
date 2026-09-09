@@ -69,10 +69,10 @@ final class OptionUpdateOperation extends AbstractOperation {
 			$this->id,
 			self::TYPE,
 			array(
-				'option'        => $this->optionName,
-				'existed'       => $existed,
+				'option'         => $this->optionName,
+				'existed'        => $existed,
 				'original_value' => $existed ? $existing : null,
-				'precondition'  => $existed ? self::fingerprintOf( $existing ) : self::absentFingerprint(),
+				'precondition'   => $existed ? self::fingerprintOf( $existing ) : self::absentFingerprint(),
 			)
 		);
 	}
@@ -104,7 +104,12 @@ final class OptionUpdateOperation extends AbstractOperation {
 	}
 
 	public function payloadFingerprint(): string {
-		return self::fingerprintOf( array( 'option' => $this->optionName, 'value' => $this->newValue ) );
+		return self::fingerprintOf(
+			array(
+				'option' => $this->optionName,
+				'value'  => $this->newValue,
+			)
+		);
 	}
 
 	public function currentPreconditionFingerprint(): string {
@@ -118,6 +123,9 @@ final class OptionUpdateOperation extends AbstractOperation {
 	}
 
 	public function toSpec(): array {
-		return array( 'option' => $this->optionName, 'value' => $this->newValue );
+		return array(
+			'option' => $this->optionName,
+			'value'  => $this->newValue,
+		);
 	}
 }

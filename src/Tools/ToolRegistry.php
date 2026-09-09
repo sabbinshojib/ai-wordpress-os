@@ -37,7 +37,7 @@ final class ToolRegistry {
 	public function register( Tool $tool ): void {
 		if ( $this->booted ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				trigger_error( 'AI OS: tool registry booted; cannot register ' . $tool->name(), E_USER_WARNING ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_trigger_error
+				trigger_error( 'AI OS: tool registry booted; cannot register ' . $tool->name(), E_USER_WARNING ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_trigger_error, WordPress.Security.EscapeOutput.OutputNotEscaped -- diagnostic log channel, not HTML output
 			}
 			return;
 		}

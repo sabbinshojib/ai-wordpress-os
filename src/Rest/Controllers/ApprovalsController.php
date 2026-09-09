@@ -20,9 +20,9 @@ use WP_REST_Response;
 
 final class ApprovalsController extends AbstractController {
 
-	public function register( string $namespace ): void {
+	public function register( string $rest_namespace ): void {
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/approvals',
 			array(
 				'methods'             => 'GET',
@@ -32,29 +32,39 @@ final class ApprovalsController extends AbstractController {
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/approvals/(?P<id>\d+)/approve',
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'approve' ),
 				'permission_callback' => array( $this, 'canApprove' ),
-				'args'                => array( 'id' => array( 'type' => 'integer', 'required' => true ) ),
+				'args'                => array(
+					'id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
 			)
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/approvals/(?P<id>\d+)/reject',
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'reject' ),
 				'permission_callback' => array( $this, 'canApprove' ),
-				'args'                => array( 'id' => array( 'type' => 'integer', 'required' => true ) ),
+				'args'                => array(
+					'id' => array(
+						'type'     => 'integer',
+						'required' => true,
+					),
+				),
 			)
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/approvals/approve-safe',
 			array(
 				'methods'             => 'POST',
@@ -86,12 +96,28 @@ final class ApprovalsController extends AbstractController {
 		$id = (int) $request->get_param( 'id' );
 
 		if ( ! $this->verifyNonce( $request ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_nonce',
+						'message' => 'Nonce verification failed.',
+					),
+				),
+				403
+			);
 		}
 
 		$user = wp_get_current_user();
 		if ( ! $user->exists() ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_unauthenticated', 'message' => 'Authentication required.' ) ), 401 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_unauthenticated',
+						'message' => 'Authentication required.',
+					),
+				),
+				401
+			);
 		}
 
 		/** @var ApprovalRepository $approvals */
@@ -100,7 +126,12 @@ final class ApprovalsController extends AbstractController {
 		$approval = $approvals->claimPending( $id, 'approved', (int) $user->ID );
 		if ( null === $approval ) {
 			return $this->json(
-				array( 'error' => array( 'code' => 'approval.claim_failed', 'message' => 'Approval is missing, already decided, or expired.' ) ),
+				array(
+					'error' => array(
+						'code'    => 'approval.claim_failed',
+						'message' => 'Approval is missing, already decided, or expired.',
+					),
+				),
 				409
 			);
 		}
@@ -114,7 +145,15 @@ final class ApprovalsController extends AbstractController {
 		$tool = $tools->get( (string) $approval['tool'] );
 		if ( null === $tool ) {
 			$approvals->markExecuted( $id, 'error', wp_json_encode( array( 'error' => 'tool unknown' ) ), null );
-			return $this->json( array( 'error' => array( 'code' => 'tool.unknown', 'message' => 'The approved tool no longer exists.' ) ), 404 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'tool.unknown',
+						'message' => 'The approved tool no longer exists.',
+					),
+				),
+				404
+			);
 		}
 
 		$result = $executor->executeApproved( $tool, (array) ( $approval['args'] ?? array() ), $user, $id );
@@ -124,14 +163,14 @@ final class ApprovalsController extends AbstractController {
 		$audit = $this->container->get( AuditLogger::class );
 		$audit->log(
 			array(
-				'user'    => $user,
-				'client'  => 'rest',
-				'tool'    => (string) $approval['tool'],
-				'action'  => 'approval.approved',
-				'args'    => (array) ( $approval['args'] ?? array() ),
-				'risk'    => (int) $approval['risk'],
-				'status'  => $result->ok() ? AuditLogger::STATUS_OK : AuditLogger::STATUS_ERROR,
-				'error'   => $result->error()?->message(),
+				'user'        => $user,
+				'client'      => 'rest',
+				'tool'        => (string) $approval['tool'],
+				'action'      => 'approval.approved',
+				'args'        => (array) ( $approval['args'] ?? array() ),
+				'risk'        => (int) $approval['risk'],
+				'status'      => $result->ok() ? AuditLogger::STATUS_OK : AuditLogger::STATUS_ERROR,
+				'error'       => $result->error()?->message(),
 				'approval_id' => $id,
 			)
 		);
@@ -151,12 +190,28 @@ final class ApprovalsController extends AbstractController {
 		$id = (int) $request->get_param( 'id' );
 
 		if ( ! $this->verifyNonce( $request ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_nonce',
+						'message' => 'Nonce verification failed.',
+					),
+				),
+				403
+			);
 		}
 
 		$user = wp_get_current_user();
 		if ( ! $user->exists() ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_unauthenticated', 'message' => 'Authentication required.' ) ), 401 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_unauthenticated',
+						'message' => 'Authentication required.',
+					),
+				),
+				401
+			);
 		}
 
 		/** @var ApprovalRepository $approvals */
@@ -164,7 +219,15 @@ final class ApprovalsController extends AbstractController {
 		$approval  = $approvals->claimPending( $id, 'rejected', (int) $user->ID );
 
 		if ( null === $approval ) {
-			return $this->json( array( 'error' => array( 'code' => 'approval.claim_failed', 'message' => 'Approval is missing, already decided, or expired.' ) ), 409 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'approval.claim_failed',
+						'message' => 'Approval is missing, already decided, or expired.',
+					),
+				),
+				409
+			);
 		}
 
 		/** @var AuditLogger $audit */
@@ -191,12 +254,28 @@ final class ApprovalsController extends AbstractController {
 	 */
 	public function approveSafe( WP_REST_Request $request ): WP_REST_Response {
 		if ( ! $this->verifyNonce( $request ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_nonce',
+						'message' => 'Nonce verification failed.',
+					),
+				),
+				403
+			);
 		}
 
 		$user = wp_get_current_user();
 		if ( ! $user->exists() ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_unauthenticated', 'message' => 'Authentication required.' ) ), 401 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_unauthenticated',
+						'message' => 'Authentication required.',
+					),
+				),
+				401
+			);
 		}
 
 		/** @var PermissionEngine $permissions */
@@ -211,38 +290,44 @@ final class ApprovalsController extends AbstractController {
 		$threshold = $permissions->ceilingFor( $user, null );
 		$ids       = $approvals->pendingIdsAtOrBelow( $threshold );
 
-		$decided = 0;
+		$decided     = 0;
 		$executed_ok = 0;
-		$failed = array();
+		$failed      = array();
 
 		foreach ( $ids as $id ) {
 			$approval = $approvals->claimPending( $id, 'approved', (int) $user->ID );
 			if ( null === $approval ) {
 				continue;
 			}
-			$decided++;
+			++$decided;
 
 			$tool = $tools->get( (string) $approval['tool'] );
 			if ( null === $tool ) {
-				$failed[] = array( 'id' => $id, 'reason' => 'tool unknown' );
+				$failed[] = array(
+					'id'     => $id,
+					'reason' => 'tool unknown',
+				);
 				$approvals->markExecuted( $id, 'error', wp_json_encode( array( 'error' => 'tool unknown' ) ), null );
 				continue;
 			}
 
 			$result = $executor->executeApproved( $tool, (array) ( $approval['args'] ?? array() ), $user, $id );
 			if ( $result->ok() ) {
-				$executed_ok++;
+				++$executed_ok;
 			} else {
-				$failed[] = array( 'id' => $id, 'reason' => $result->error()?->message() ?? 'execution failed' );
+				$failed[] = array(
+					'id'     => $id,
+					'reason' => $result->error()?->message() ?? 'execution failed',
+				);
 			}
 		}
 
 		return $this->json(
 			array(
-				'approved'     => $decided,
-				'executed_ok'  => $executed_ok,
-				'failed'       => $failed,
-				'threshold'    => $threshold,
+				'approved'    => $decided,
+				'executed_ok' => $executed_ok,
+				'failed'      => $failed,
+				'threshold'   => $threshold,
 			)
 		);
 	}
@@ -258,7 +343,7 @@ final class ApprovalsController extends AbstractController {
 		foreach ( $rows as $row ) {
 			unset( $row['args_json'], $row['execution_result'] );
 			$row['args'] = \AIOS\Support\Sanitize::redact( (array) ( $row['args'] ?? array() ) );
-			$shaped[] = $row;
+			$shaped[]    = $row;
 		}
 		return $shaped;
 	}

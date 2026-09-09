@@ -608,6 +608,13 @@ function get_post_meta( int $id, string $key = '', bool $single = false ): mixed
         return $single ? ( $values[0] ?? '' ) : $values;
 }
 
+/** Mirrors core metadata_exists(): distinguishes stored values (even '')
+ * from a genuinely absent key, which get_post_meta($single=true) cannot. */
+function metadata_exists( string $meta_type, int $object_id, string $meta_key ): bool {
+        $state = __shim_state();
+        return array_key_exists( $meta_key, $state['sitecache'][ "meta_{$object_id}" ] ?? array() );
+}
+
 function update_post_meta( int $id, string $key, mixed $value ): bool {
         $GLOBALS['__wp_shim']['sitecache'][ "meta_{$id}" ][ $key ] = array( $value );
         return true;
@@ -1540,10 +1547,13 @@ function wp_delete_attachment( int $id, bool $force = false ): bool|WP_Post {
         return $deleted;
 }
 
-function wp_delete_file( string $file ): void {
-        if ( file_exists( $file ) ) {
-                unlink( $file );
+/** Mirrors core wp_delete_file(): returns false when the file is missing
+ * or cannot be removed, true on successful removal. */
+function wp_delete_file( string $file ): bool {
+        if ( ! file_exists( $file ) ) {
+                return false;
         }
+        return unlink( $file );
 }
 
 function wp_get_attachment_url( int $id ): string|false {

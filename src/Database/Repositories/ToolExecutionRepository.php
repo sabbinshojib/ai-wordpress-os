@@ -28,13 +28,13 @@ final class ToolExecutionRepository {
 		$id = $this->db->insert(
 			$this->table(),
 			array(
-				'occurred_at'  => current_time( 'mysql', true ),
-				'tool'         => Strings::truncate( $tool, 190 ),
-				'user_id'      => $user_id,
-				'client'       => Strings::truncate( $client, 64 ),
-				'success'      => $success ? 1 : 0,
-				'duration_ms'  => max( 0, $duration_ms ),
-				'error_code'   => Strings::truncate( $error_code, 120 ),
+				'occurred_at' => current_time( 'mysql', true ),
+				'tool'        => Strings::truncate( $tool, 190 ),
+				'user_id'     => $user_id,
+				'client'      => Strings::truncate( $client, 64 ),
+				'success'     => $success ? 1 : 0,
+				'duration_ms' => max( 0, $duration_ms ),
+				'error_code'  => Strings::truncate( $error_code, 120 ),
 			)
 		);
 		return $id ?? 0;

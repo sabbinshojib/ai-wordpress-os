@@ -48,25 +48,27 @@ final class MetadataUpdateOperation extends AbstractOperation {
 	}
 
 	public function describe(): array {
-		return array( 'post_id' => $this->postId, 'meta_key' => $this->metaKey );
+		return array(
+			'post_id'  => $this->postId,
+			'meta_key' => $this->metaKey,
+		);
 	}
 
 	public function captureSnapshot(): Snapshot {
 		if ( null === get_post( $this->postId ) ) {
 			throw new MutationException( 'metadata_update.not_found', 'The target post does not exist.' );
 		}
-		$existing = get_post_meta( $this->postId, $this->metaKey );
-		$existed  = array() !== $existing;
-		$original = $existed ? ( $existing[0] ?? null ) : null;
+		$existed  = metadata_exists( 'post', $this->postId, $this->metaKey );
+		$original = $existed ? get_post_meta( $this->postId, $this->metaKey, true ) : null;
 		return new Snapshot(
 			$this->id,
 			self::TYPE,
 			array(
-				'post_id'       => $this->postId,
-				'meta_key'      => $this->metaKey,
-				'existed'       => $existed,
+				'post_id'        => $this->postId,
+				'meta_key'       => $this->metaKey,
+				'existed'        => $existed,
 				'original_value' => $original,
-				'precondition'  => $existed ? self::fingerprintOf( $original ) : self::absentFingerprint(),
+				'precondition'   => $existed ? self::fingerprintOf( $original ) : self::absentFingerprint(),
 			)
 		);
 	}
@@ -100,18 +102,23 @@ final class MetadataUpdateOperation extends AbstractOperation {
 	}
 
 	public function payloadFingerprint(): string {
-		return self::fingerprintOf( array( 'post_id' => $this->postId, 'meta_key' => $this->metaKey, 'value' => $this->newValue ) );
+		return self::fingerprintOf(
+			array(
+				'post_id'  => $this->postId,
+				'meta_key' => $this->metaKey,
+				'value'    => $this->newValue,
+			)
+		);
 	}
 
 	public function currentPreconditionFingerprint(): string {
 		if ( null === get_post( $this->postId ) ) {
 			return self::absentFingerprint();
 		}
-		$existing = get_post_meta( $this->postId, $this->metaKey );
-		if ( array() === $existing ) {
+		if ( ! metadata_exists( 'post', $this->postId, $this->metaKey ) ) {
 			return self::absentFingerprint();
 		}
-		return self::fingerprintOf( $existing[0] ?? null );
+		return self::fingerprintOf( get_post_meta( $this->postId, $this->metaKey, true ) );
 	}
 
 	public function intendedValue(): mixed {
@@ -119,6 +126,10 @@ final class MetadataUpdateOperation extends AbstractOperation {
 	}
 
 	public function toSpec(): array {
-		return array( 'post_id' => $this->postId, 'meta_key' => $this->metaKey, 'value' => $this->newValue );
+		return array(
+			'post_id'  => $this->postId,
+			'meta_key' => $this->metaKey,
+			'value'    => $this->newValue,
+		);
 	}
 }

@@ -84,6 +84,7 @@ final class AdminPages {
 
 		foreach ( (array) $menu as $index => $item ) {
 			if ( isset( $item[2] ) && self::SLUG === $item[2] ) {
+				// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- the core $menu array is the only hook for injecting a pending-count badge into an existing menu title.
 				$menu[ $index ][0] = sprintf(
 					/* translators: %s: pending approvals count */
 					_x( 'AI OS %s', 'menu title with pending badge', 'ai-wordpress-os' ),

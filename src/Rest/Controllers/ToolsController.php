@@ -21,9 +21,9 @@ use WP_REST_Response;
 
 final class ToolsController extends AbstractController {
 
-	public function register( string $namespace ): void {
+	public function register( string $rest_namespace ): void {
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/tools',
 			array(
 				'methods'             => 'GET',
@@ -40,7 +40,7 @@ final class ToolsController extends AbstractController {
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/tools/execute',
 			array(
 				'methods'             => 'POST',
@@ -55,8 +55,8 @@ final class ToolsController extends AbstractController {
 						'validate_callback' => array( $this, 'validateToolIdentifier' ),
 					),
 					'arguments' => array(
-						'type'     => 'object',
-						'default'  => array(),
+						'type'    => 'object',
+						'default' => array(),
 					),
 				),
 			)
@@ -135,7 +135,15 @@ final class ToolsController extends AbstractController {
 	 */
 	public function execute( WP_REST_Request $request ): WP_REST_Response {
 		if ( ! $this->verifyNonce( $request ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_nonce',
+						'message' => 'Nonce verification failed.',
+					),
+				),
+				403
+			);
 		}
 
 		/** @var ToolExecutor $executor */
@@ -144,7 +152,12 @@ final class ToolsController extends AbstractController {
 		$user = wp_get_current_user();
 		if ( ! $user->exists() ) {
 			return $this->json(
-				array( 'error' => array( 'code' => 'ai_os_unauthenticated', 'message' => 'Authentication required.' ) ),
+				array(
+					'error' => array(
+						'code'    => 'ai_os_unauthenticated',
+						'message' => 'Authentication required.',
+					),
+				),
 				401
 			);
 		}
@@ -156,8 +169,8 @@ final class ToolsController extends AbstractController {
 		}
 
 		// API-key principal context (for key ceilings).
-		$auth = null;
-		$keys = $this->container->get( ApiKeyRepository::class );
+		$auth     = null;
+		$keys     = $this->container->get( ApiKeyRepository::class );
 		$settings = $this->container->get( Settings::class );
 		if ( $keys instanceof ApiKeyRepository && $settings instanceof Settings ) {
 			$auth = new Authenticator( $keys, $settings, 'rest' );

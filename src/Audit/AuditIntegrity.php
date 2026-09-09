@@ -117,6 +117,7 @@ final class AuditIntegrity {
 			return $value;
 		};
 
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- row-hash canonicalization: plain json_encode() keeps byte-stable output across WP versions (P2-09 policy).
 		return (string) json_encode( $normalize( $fields ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 	}
 
@@ -245,7 +246,10 @@ final class AuditIntegrity {
 			++$checked;
 			$status = $this->verifyRow( $row, $prev_row, $siteId );
 			if ( self::STATUS_VALID !== $status ) {
-				$issues[] = array( 'id' => $row['id'] ?? null, 'status' => $status );
+				$issues[] = array(
+					'id'     => $row['id'] ?? null,
+					'status' => $status,
+				);
 			}
 			$prev_row = $row;
 		}

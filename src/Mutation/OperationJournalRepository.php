@@ -50,17 +50,17 @@ final class OperationJournalRepository {
 		$insert_id = $this->db->insert(
 			$this->table(),
 			array(
-				'change_set_id'    => $change_set_id,
-				'operation_id'     => $operation->id(),
-				'operation_index'  => $operation_index,
+				'change_set_id'            => $change_set_id,
+				'operation_id'             => $operation->id(),
+				'operation_index'          => $operation_index,
 				'operation_schema_version' => OperationRegistry::SCHEMA_VERSION,
-				'operation_type'   => $operation->type(),
-				'site_id'          => $site_id,
-				'state'            => OperationJournalState::PENDING,
-				'state_version'    => 0,
-				'payload_hash'     => $operation->payloadFingerprint(),
-				'created_at'       => $now,
-				'updated_at'       => $now,
+				'operation_type'           => $operation->type(),
+				'site_id'                  => $site_id,
+				'state'                    => OperationJournalState::PENDING,
+				'state_version'            => 0,
+				'payload_hash'             => $operation->payloadFingerprint(),
+				'created_at'               => $now,
+				'updated_at'               => $now,
 			)
 		);
 
@@ -133,7 +133,12 @@ final class OperationJournalRepository {
 		$updated = $this->db->update(
 			$this->table(),
 			$data,
-			array( 'change_set_id' => $change_set_id, 'operation_index' => $operation_index, 'state' => $from_state, 'state_version' => $expected_version )
+			array(
+				'change_set_id'   => $change_set_id,
+				'operation_index' => $operation_index,
+				'state'           => $from_state,
+				'state_version'   => $expected_version,
+			)
 		);
 		return 1 === $updated;
 	}
@@ -147,7 +152,7 @@ final class OperationJournalRepository {
 	 * @param array<string, mixed> $recovery_state
 	 */
 	public function saveRecovery( string $change_set_id, int $operation_index, array $recovery_state, string $snapshot_hash ): bool {
-		$json = (string) json_encode( $recovery_state, JSON_UNESCAPED_SLASHES );
+		$json    = (string) wp_json_encode( $recovery_state, JSON_UNESCAPED_SLASHES );
 		$updated = $this->db->update(
 			$this->table(),
 			array(
@@ -156,7 +161,10 @@ final class OperationJournalRepository {
 				'snapshot_hash'       => $snapshot_hash,
 				'updated_at'          => $this->now(),
 			),
-			array( 'change_set_id' => $change_set_id, 'operation_index' => $operation_index )
+			array(
+				'change_set_id'   => $change_set_id,
+				'operation_index' => $operation_index,
+			)
 		);
 		return $updated > 0;
 	}
@@ -186,7 +194,17 @@ final class OperationJournalRepository {
 		if ( ! in_array( $column, $allowed, true ) ) {
 			return;
 		}
-		$this->db->update( $this->table(), array( $column => $this->now(), 'updated_at' => $this->now() ), array( 'change_set_id' => $change_set_id, 'operation_index' => $operation_index ) );
+		$this->db->update(
+			$this->table(),
+			array(
+				$column      => $this->now(),
+				'updated_at' => $this->now(),
+			),
+			array(
+				'change_set_id'   => $change_set_id,
+				'operation_index' => $operation_index,
+			)
+		);
 	}
 
 	/**

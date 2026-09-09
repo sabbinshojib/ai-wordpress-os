@@ -18,23 +18,23 @@ final class PluginInspector {
 	 * @var array<string, string>  constant/function probe → label
 	 */
 	private const INTEGRATION_PROBES = array(
-		'elementor/elementor.php'        => 'Elementor',
-		'woocommerce/woocommerce.php'    => 'WooCommerce',
-		'advanced-custom-fields/acf.php' => 'ACF',
-		'acf-pro/acf.php'                => 'ACF Pro',
-		'wordpress-seo/wp-seo.php'       => 'Yoast SEO',
-		'seo-by-rank-math/rank-math.php' => 'Rank Math',
-		'wpforms/wpforms.php'            => 'WPForms',
-		'gravityforms/gravityforms.php'  => 'Gravity Forms',
-		'contact-form-7/wp-contact-form-7.php' => 'Contact Form 7',
-		'bricks/bricks.php'              => 'Bricks Builder',
-		'divi/divi.php'                  => 'Divi',
-		'breakdance/plugin.php'          => 'Breakdance',
+		'elementor/elementor.php'                    => 'Elementor',
+		'woocommerce/woocommerce.php'                => 'WooCommerce',
+		'advanced-custom-fields/acf.php'             => 'ACF',
+		'acf-pro/acf.php'                            => 'ACF Pro',
+		'wordpress-seo/wp-seo.php'                   => 'Yoast SEO',
+		'seo-by-rank-math/rank-math.php'             => 'Rank Math',
+		'wpforms/wpforms.php'                        => 'WPForms',
+		'gravityforms/gravityforms.php'              => 'Gravity Forms',
+		'contact-form-7/wp-contact-form-7.php'       => 'Contact Form 7',
+		'bricks/bricks.php'                          => 'Bricks Builder',
+		'divi/divi.php'                              => 'Divi',
+		'breakdance/plugin.php'                      => 'Breakdance',
 		'beaver-builder-lite-version/fl-builder.php' => 'Beaver Builder',
-		'oxygen/functions.php'           => 'Oxygen',
-		'jetpack/jetpack.php'            => 'Jetpack',
-		'wp-super-cache/wp-cache.php'    => 'WP Super Cache',
-		'autoptimize/autoptimize.php'    => 'Autoptimize',
+		'oxygen/functions.php'                       => 'Oxygen',
+		'jetpack/jetpack.php'                        => 'Jetpack',
+		'wp-super-cache/wp-cache.php'                => 'WP Super Cache',
+		'autoptimize/autoptimize.php'                => 'Autoptimize',
 	);
 
 	/**
@@ -51,10 +51,10 @@ final class PluginInspector {
 			return array( 'available' => false );
 		}
 
-		$plugins     = get_plugins();
-		$active      = (array) get_option( 'active_plugins', array() );
-		$network     = is_multisite() ? (array) get_site_option( 'active_sitewide_plugins', array() ) : array();
-		$active_ids  = array_merge( $active, array_keys( $network ) );
+		$plugins    = get_plugins();
+		$active     = (array) get_option( 'active_plugins', array() );
+		$network    = is_multisite() ? (array) get_site_option( 'active_sitewide_plugins', array() ) : array();
+		$active_ids = array_merge( $active, array_keys( $network ) );
 
 		$items = array();
 		foreach ( $plugins as $file => $data ) {
@@ -67,10 +67,10 @@ final class PluginInspector {
 		}
 
 		return array(
-			'available'   => true,
-			'installed'   => count( $items ),
-			'active'      => count( array_filter( $items, static fn( array $p ): bool => $p['active'] ) ),
-			'plugins'     => array_slice( $items, 0, 100 ),
+			'available' => true,
+			'installed' => count( $items ),
+			'active'    => count( array_filter( $items, static fn( array $p ): bool => $p['active'] ) ),
+			'plugins'   => array_slice( $items, 0, 100 ),
 		);
 	}
 
@@ -98,7 +98,7 @@ final class PluginInspector {
 			if ( isset( $plugins[ $file ] ) ) {
 				$is_active = in_array( $file, $active, true )
 					|| ( is_multisite() && array_key_exists( $file, (array) get_site_option( 'active_sitewide_plugins', array() ) ) );
-				$found[] = array(
+				$found[]   = array(
 					'slug'    => dirname( $file ),
 					'name'    => $label,
 					'version' => (string) ( $plugins[ $file ]['Version'] ?? '' ),

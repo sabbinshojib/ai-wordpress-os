@@ -25,26 +25,26 @@ use AIOS\Database\MigrationInterface;
 
 final class Migration_202501010001_CoreTables implements MigrationInterface {
 
-        public static function version(): string {
-                return '202501010001';
-        }
+	public static function version(): string {
+			return '202501010001';
+	}
 
-        public function up( Database $db ): bool {
-                global $wpdb;
+	public function up( Database $db ): bool {
+			global $wpdb;
 
-                $collate = $db->charsetCollate();
+			$collate = $db->charsetCollate();
 
-                $audit     = $db->table( Database::TABLE_AUDIT_LOGS );
-                $execs     = $db->table( Database::TABLE_TOOL_EXECUTIONS );
-                $approvals = $db->table( Database::TABLE_APPROVALS );
-                $keys      = $db->table( Database::TABLE_API_KEYS );
+			$audit     = $db->table( Database::TABLE_AUDIT_LOGS );
+			$execs     = $db->table( Database::TABLE_TOOL_EXECUTIONS );
+			$approvals = $db->table( Database::TABLE_APPROVALS );
+			$keys      = $db->table( Database::TABLE_API_KEYS );
 
-                // dbDelta lives in wp-admin; guard for headless contexts.
-                $upgrade = ABSPATH . 'wp-admin/includes/upgrade.php';
-                if ( is_file( $upgrade ) && ! function_exists( 'dbDelta' ) ) {
-                        require_once $upgrade;
-                }
-                $sql = "CREATE TABLE {$audit} (
+			// dbDelta lives in wp-admin; guard for headless contexts.
+			$upgrade = ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( is_file( $upgrade ) && ! function_exists( 'dbDelta' ) ) {
+				require_once $upgrade;
+		}
+			$sql = "CREATE TABLE {$audit} (
                         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                         occurred_at DATETIME NOT NULL,
                         user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
@@ -70,9 +70,9 @@ final class Migration_202501010001_CoreTables implements MigrationInterface {
                         KEY status (status),
                         KEY risk (risk)
                 ) {$collate};";
-                dbDelta( $sql );
+			dbDelta( $sql );
 
-                $sql = "CREATE TABLE {$execs} (
+			$sql = "CREATE TABLE {$execs} (
                         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                         occurred_at DATETIME NOT NULL,
                         tool VARCHAR(190) NOT NULL DEFAULT '',
@@ -85,9 +85,9 @@ final class Migration_202501010001_CoreTables implements MigrationInterface {
                         KEY tool_time (tool, occurred_at),
                         KEY success (success)
                 ) {$collate};";
-                dbDelta( $sql );
+			dbDelta( $sql );
 
-                $sql = "CREATE TABLE {$approvals} (
+			$sql = "CREATE TABLE {$approvals} (
                         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                         created_at DATETIME NOT NULL,
                         expires_at DATETIME NOT NULL,
@@ -108,9 +108,9 @@ final class Migration_202501010001_CoreTables implements MigrationInterface {
                         KEY status (status),
                         KEY risk_status (risk, status)
                 ) {$collate};";
-                dbDelta( $sql );
+			dbDelta( $sql );
 
-                $sql = "CREATE TABLE {$keys} (
+			$sql = "CREATE TABLE {$keys} (
                         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                         created_at DATETIME NOT NULL,
                         label VARCHAR(190) NOT NULL DEFAULT '',
@@ -127,9 +127,9 @@ final class Migration_202501010001_CoreTables implements MigrationInterface {
                         KEY key_hash (key_hash),
                         KEY user_id (user_id)
                 ) {$collate};";
-                dbDelta( $sql );
+			dbDelta( $sql );
 
-                // dbDelta() returns arrays of messages; absence of errors is success.
-                return '' === $db->lastError();
-        }
+			// dbDelta() returns arrays of messages; absence of errors is success.
+			return '' === $db->lastError();
+	}
 }

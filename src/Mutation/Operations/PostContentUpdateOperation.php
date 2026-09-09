@@ -64,7 +64,10 @@ final class PostContentUpdateOperation extends AbstractOperation {
 	}
 
 	public function describe(): array {
-		return array( 'post_id' => $this->postId, 'fields' => array_keys( $this->fields ) );
+		return array(
+			'post_id' => $this->postId,
+			'fields'  => array_keys( $this->fields ),
+		);
 	}
 
 	public function captureSnapshot(): Snapshot {
@@ -76,7 +79,15 @@ final class PostContentUpdateOperation extends AbstractOperation {
 		foreach ( array_keys( $this->fields ) as $field ) {
 			$original[ $field ] = $post->{$field} ?? '';
 		}
-		return new Snapshot( $this->id, self::TYPE, array( 'post_id' => $this->postId, 'original' => $original, 'precondition' => self::fingerprintOf( $original ) ) );
+		return new Snapshot(
+			$this->id,
+			self::TYPE,
+			array(
+				'post_id'      => $this->postId,
+				'original'     => $original,
+				'precondition' => self::fingerprintOf( $original ),
+			)
+		);
 	}
 
 	public function apply(): void {
@@ -106,8 +117,8 @@ final class PostContentUpdateOperation extends AbstractOperation {
 		$post_id  = (int) ( $state['post_id'] ?? $this->postId );
 		$original = (array) ( $state['original'] ?? array() );
 		/** @var array{ID: int, post_title?: string, post_content?: string, post_excerpt?: string} $postarr */
-		$postarr  = array_merge( array( 'ID' => $post_id ), $original );
-		$result   = wp_update_post( $postarr, true );
+		$postarr = array_merge( array( 'ID' => $post_id ), $original );
+		$result  = wp_update_post( $postarr, true );
 		if ( $result instanceof \WP_Error ) {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to restore the original post fields during rollback' );
 		}
@@ -115,7 +126,12 @@ final class PostContentUpdateOperation extends AbstractOperation {
 	}
 
 	public function payloadFingerprint(): string {
-		return self::fingerprintOf( array( 'post_id' => $this->postId, 'fields' => $this->fields ) );
+		return self::fingerprintOf(
+			array(
+				'post_id' => $this->postId,
+				'fields'  => $this->fields,
+			)
+		);
 	}
 
 	public function currentPreconditionFingerprint(): string {
@@ -138,6 +154,9 @@ final class PostContentUpdateOperation extends AbstractOperation {
 	}
 
 	public function toSpec(): array {
-		return array( 'post_id' => $this->postId, 'fields' => $this->fields );
+		return array(
+			'post_id' => $this->postId,
+			'fields'  => $this->fields,
+		);
 	}
 }

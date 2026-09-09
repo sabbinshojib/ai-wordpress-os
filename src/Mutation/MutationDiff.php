@@ -26,6 +26,7 @@ final class MutationDiff {
 	 */
 	public function hash(): string {
 		$canonical = array_map( static fn( OperationDiff $d ): array => $d->toArray(), $this->operations );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- fingerprint producer: plain json_encode() keeps byte-stable output across WP versions (P2-09 policy).
 		return hash( 'sha256', (string) json_encode( $canonical, JSON_UNESCAPED_SLASHES ) );
 	}
 

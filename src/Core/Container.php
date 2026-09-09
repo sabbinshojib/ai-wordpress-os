@@ -53,8 +53,8 @@ final class Container {
 	/**
 	 * Register an already-constructed instance.
 	 */
-	public function instance( string $id, object $object ): void {
-		$this->instances[ $id ] = $object;
+	public function instance( string $id, object $service ): void {
+		$this->instances[ $id ] = $service;
 		$this->shared[ $id ]    = true;
 	}
 
@@ -99,20 +99,20 @@ final class Container {
 	 * everything with a default is left to the default; anything else
 	 * fails explicitly.
 	 */
-	private function build( string $class ): object {
+	private function build( string $class_name ): object {
 		try {
-			$reflector = new \ReflectionClass( $class );
+			$reflector = new \ReflectionClass( $class_name );
 		} catch ( \ReflectionException $e ) {
-			throw new ContainerException( "Class [{$class}] does not exist." );
+			throw new ContainerException( "Class [{$class_name}] does not exist." );
 		}
 
 		if ( ! $reflector->isInstantiable() ) {
-			throw new ContainerException( "Class [{$class}] is not instantiable." );
+			throw new ContainerException( "Class [{$class_name}] is not instantiable." );
 		}
 
 		$constructor = $reflector->getConstructor();
 		if ( null === $constructor || 0 === $constructor->getNumberOfParameters() ) {
-			return new $class();
+			return new $class_name();
 		}
 
 		$arguments = array();
@@ -133,7 +133,7 @@ final class Container {
 				sprintf(
 					'Cannot auto-resolve parameter $%s of %s::__construct().',
 					$parameter->getName(),
-					$class
+					$class_name
 				)
 			);
 		}

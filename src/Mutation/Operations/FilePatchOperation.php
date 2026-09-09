@@ -60,7 +60,10 @@ final class FilePatchOperation extends AbstractOperation {
 	}
 
 	public function describe(): array {
-		return array( 'path' => $this->path, 'new_bytes' => strlen( $this->newContent ) );
+		return array(
+			'path'      => $this->path,
+			'new_bytes' => strlen( $this->newContent ),
+		);
 	}
 
 	public function captureSnapshot(): Snapshot {
@@ -76,7 +79,15 @@ final class FilePatchOperation extends AbstractOperation {
 		if ( false === $original ) {
 			throw new MutationException( 'file_patch.read_failed', 'Failed to read the existing file content for snapshot.' );
 		}
-		return new Snapshot( $this->id, self::TYPE, array( 'path' => $this->resolvedPath, 'original_content' => $original, 'precondition' => self::fingerprintOf( $original ) ) );
+		return new Snapshot(
+			$this->id,
+			self::TYPE,
+			array(
+				'path'             => $this->resolvedPath,
+				'original_content' => $original,
+				'precondition'     => self::fingerprintOf( $original ),
+			)
+		);
 	}
 
 	public function apply(): void {
@@ -84,8 +95,9 @@ final class FilePatchOperation extends AbstractOperation {
 		if ( false === file_put_contents( $temp, $this->newContent, LOCK_EX ) ) {
 			throw new MutationException( 'file_patch.write_failed', 'Failed to write the replacement content.' );
 		}
-		if ( ! @rename( $temp, $this->resolvedPath ) ) {
-			@unlink( $temp );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename -- intentional atomic same-filesystem replacement; WP_Filesystem cannot be assumed initialized in headless contexts.
+		if ( ! rename( $temp, $this->resolvedPath ) ) {
+			wp_delete_file( $temp );
 			throw new MutationException( 'file_patch.rename_failed', 'Failed to atomically replace the file.' );
 		}
 	}
@@ -108,7 +120,12 @@ final class FilePatchOperation extends AbstractOperation {
 	}
 
 	public function payloadFingerprint(): string {
-		return self::fingerprintOf( array( 'path' => $this->path, 'content' => $this->newContent ) );
+		return self::fingerprintOf(
+			array(
+				'path'    => $this->path,
+				'content' => $this->newContent,
+			)
+		);
 	}
 
 	public function currentPreconditionFingerprint(): string {
@@ -125,6 +142,9 @@ final class FilePatchOperation extends AbstractOperation {
 	}
 
 	public function toSpec(): array {
-		return array( 'path' => $this->path, 'content' => $this->newContent );
+		return array(
+			'path'    => $this->path,
+			'content' => $this->newContent,
+		);
 	}
 }

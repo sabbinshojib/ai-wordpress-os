@@ -15,16 +15,16 @@ namespace AIOS\Support;
 
 final class StructuredError implements \JsonSerializable, \Stringable {
 
-	public const TYPE_VALIDATION   = 'validation';
-	public const TYPE_PERMISSION   = 'permission';
-	public const TYPE_APPROVAL     = 'approval';
-	public const TYPE_NOT_FOUND    = 'not_found';
-	public const TYPE_CONFLICT     = 'conflict';
-	public const TYPE_RATE_LIMIT   = 'rate_limit';
-	public const TYPE_EXECUTION    = 'execution';
-	public const TYPE_PROTOCOL     = 'protocol';
-	public const TYPE_UNAVAILABLE  = 'unavailable';
-	public const TYPE_SECURITY     = 'security';
+	public const TYPE_VALIDATION  = 'validation';
+	public const TYPE_PERMISSION  = 'permission';
+	public const TYPE_APPROVAL    = 'approval';
+	public const TYPE_NOT_FOUND   = 'not_found';
+	public const TYPE_CONFLICT    = 'conflict';
+	public const TYPE_RATE_LIMIT  = 'rate_limit';
+	public const TYPE_EXECUTION   = 'execution';
+	public const TYPE_PROTOCOL    = 'protocol';
+	public const TYPE_UNAVAILABLE = 'unavailable';
+	public const TYPE_SECURITY    = 'security';
 
 	/**
 	 * Machine-readable, stable error code (e.g. "tool.input_invalid").
@@ -66,12 +66,12 @@ final class StructuredError implements \JsonSerializable, \Stringable {
 		array $context = array(),
 		?string $internal_detail = null
 	) {
-		$this->code             = $code;
-		$this->message          = $message;
-		$this->type             = $type;
-		$this->retryable        = $retryable;
-		$this->context          = $context;
-		$this->internal_detail  = $internal_detail;
+		$this->code            = $code;
+		$this->message         = $message;
+		$this->type            = $type;
+		$this->retryable       = $retryable;
+		$this->context         = $context;
+		$this->internal_detail = $internal_detail;
 	}
 
 	public static function validation( string $code, string $message, array $context = array() ): self {

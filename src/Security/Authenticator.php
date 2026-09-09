@@ -96,7 +96,7 @@ final class Authenticator {
 	 * Header value, respecting apache/nginx header casings.
 	 */
 	private function currentKeyHeader(): ?string {
-		$direct = $_SERVER[ 'HTTP_X_AI_OS_KEY' ] ?? null; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$direct = $_SERVER['HTTP_X_AI_OS_KEY'] ?? null; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( is_string( $direct ) && '' !== trim( $direct ) ) {
 			return trim( $direct );
 		}

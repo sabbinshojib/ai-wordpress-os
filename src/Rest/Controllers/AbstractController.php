@@ -22,7 +22,7 @@ abstract class AbstractController {
 		$this->container = $container;
 	}
 
-	abstract public function register( string $namespace ): void;
+	abstract public function register( string $rest_namespace ): void;
 
 	/**
 	 * Standard JSON response with CORS-friendly headers.

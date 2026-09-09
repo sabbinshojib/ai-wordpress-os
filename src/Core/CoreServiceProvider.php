@@ -195,7 +195,8 @@ final class CoreServiceProvider implements ServiceProviderInterface {
 		$tools->boot();
 
 		// REST API (includes the MCP transport route).
-		if ( ( $rest = $container->get( RestApi::class ) ) instanceof RestApi ) {
+		$rest = $container->get( RestApi::class );
+		if ( $rest instanceof RestApi ) {
 			$rest->hook();
 		}
 

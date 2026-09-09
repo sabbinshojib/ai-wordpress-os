@@ -258,7 +258,12 @@ final class DurableMutationCoordinator {
 				'risk'             => (int) ( $row['risk'] ?? 0 ),
 				'status'           => AuditLogger::STATUS_BLOCKED,
 				'error'            => $error,
-				'affected_objects' => array( array( 'type' => 'change_set', 'target' => $change_set_id ) ),
+				'affected_objects' => array(
+					array(
+						'type'   => 'change_set',
+						'target' => $change_set_id,
+					),
+				),
 			)
 		);
 	}
@@ -341,7 +346,8 @@ final class DurableMutationCoordinator {
 					/** @var Snapshot $snapshot */
 					$snapshot = $context['snapshot'];
 					$state    = $snapshot->state();
-					$json     = (string) json_encode( $state, JSON_UNESCAPED_SLASHES );
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- snapshot-hash input: plain json_encode() keeps byte-stable output across WP versions (P2-09 policy).
+					$json = (string) json_encode( $state, JSON_UNESCAPED_SLASHES );
 					if ( ! $this->journal->saveRecovery( $change_set_id, $operation_index, $state, hash( 'sha256', $json ) ) ) {
 						throw new MutationException( 'operation_journal.write_failed', 'Failed to durably persist this operation\'s recovery state — refusing to proceed to Diff/Approval/Apply without it.' );
 					}
@@ -525,8 +531,8 @@ final class DurableMutationCoordinator {
 		if ( null === $row ) {
 			return;
 		}
-		$from      = (string) $row['state'];
-		$version   = (int) $row['state_version'];
+		$from       = (string) $row['state'];
+		$version    = (int) $row['state_version'];
 		$last_index = count( $path ) - 1;
 
 		foreach ( array_values( $path ) as $index => $to ) {
@@ -538,7 +544,7 @@ final class DurableMutationCoordinator {
 				return; // CAS lost the race (row changed under us) — stop, do not force further.
 			}
 			$from = $to;
-			$version++;
+			++$version;
 		}
 	}
 

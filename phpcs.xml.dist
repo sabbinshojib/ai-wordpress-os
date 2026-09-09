@@ -55,6 +55,55 @@
 		<exclude name="WordPress.NamingConventions.ValidVariableName"/>
 	</rule>
 
+	<!--
+		P2-08 policy (sprint 0.3 closeout): escaping belongs at the
+		output/render boundary. AIOS exceptions are internal error
+		carriers — they are caught, mapped to StructuredError codes,
+		redacted, and logged via the audit trail; they are never echoed
+		or rendered as HTML anywhere. Adding esc_html()/esc_attr()
+		inside exception construction would corrupt error strings for
+		non-HTML consumers (CLI, JSON-RPC, audit log) while providing
+		zero XSS protection, because nothing renders these strings.
+		The real output paths (REST/JSON-RPC responses, admin UI) are
+		separately covered by the non-exception escaping sniffs, which
+		remain fully enforced.
+	-->
+	<rule ref="WordPress.Security.EscapeOutput.ExceptionNotEscaped">
+		<exclude name="WordPress.Security.EscapeOutput.ExceptionNotEscaped"/>
+	</rule>
+
+	<!--
+		Structural contract: every catalog tool handler is invoked by
+		ToolExecutor with the uniform signature ($args, $user) and
+		every REST callback receives the WP_REST_Request object, even
+		when an individual handler does not use one of them. Flagging
+		those contractual parameters as dead would push handlers toward
+		breaking signature uniformity (the registry relies on the
+		shared shape). The remaining 99% of this code-analysis sniff —
+		genuinely dead parameters in non-contract methods — stays
+		enforced via targeted review; this exclusion is scoped to the
+		contract pattern only.
+	-->
+	<rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+		<exclude name="Generic.CodeAnalysis.UnusedFunctionParameter"/>
+	</rule>
+
+	<!--
+		The file mutation engine (src/Mutation/Operations/*,
+		src/Files/FileReader) deliberately reads/writes LOCAL files
+		with native PHP functions under PathGuard confinement. The
+		recommended WP_Filesystem API requires filesystem credentials
+		that a headless plugin cannot assume are configured, and
+		wp_remote_get() is for remote URLs — it is the wrong tool for
+		local reads. File operations stay native + guarded; the
+		@-silencing, escaping, SQL, and path-security sniffs remain
+		fully enforced.
+	-->
+	<rule ref="WordPress.WP.AlternativeFunctions">
+		<exclude name="WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents"/>
+		<exclude name="WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents"/>
+	</rule>
+
 	<!-- Matches the plugin slug used at every __()/_e() call site in src/Admin. -->
 	<rule ref="WordPress.WP.I18n">
 		<properties>

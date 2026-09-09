@@ -97,7 +97,7 @@ final class ApiKeyManager {
 		foreach ( $all as $record ) {
 			if ( (int) $record['id'] === $id ) {
 				$this->keys->revoke( $id );
-				$replacement = $this->issue(
+				$replacement                 = $this->issue(
 					array(
 						'label'        => ( $record['label'] ?? 'key' ) . ' (rotated)',
 						'user_id'      => (int) $record['user_id'],
@@ -134,6 +134,7 @@ final class ApiKeyManager {
 	 * CSPRNG key material.
 	 */
 	public static function generate(): string {
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- API-key material encoding, not code obfuscation.
 		return 'aios_' . rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
 	}
 }

@@ -121,10 +121,10 @@ final class MutationEngine {
 				if ( $this->permissions->requiresApproval( $change_set->riskLevel() ) ) {
 					$approval_id = $this->approvals->create(
 						array(
-							'user_id' => $acting->ID,
-							'client'  => 'mutation-engine',
-							'tool'    => 'mutation.apply',
-							'args'    => array(
+							'user_id'         => $acting->ID,
+							'client'          => 'mutation-engine',
+							'tool'            => 'mutation.apply',
+							'args'            => array(
 								'change_set_id' => $change_set->id(),
 								'fingerprint'   => $fingerprint,
 								'diff_hash'     => $diff_hash,
@@ -253,7 +253,7 @@ final class MutationEngine {
 	private function captureSnapshots( ChangeSet $change_set, ?callable $on_event = null ): array {
 		$snapshots = array();
 		foreach ( $change_set->operations() as $operation ) {
-			$snapshot = $operation->captureSnapshot();
+			$snapshot                      = $operation->captureSnapshot();
 			$snapshots[ $operation->id() ] = $snapshot;
 			if ( null !== $on_event ) {
 				$on_event( 'snapshot_captured', $operation, array( 'snapshot' => $snapshot ) );
@@ -376,7 +376,8 @@ final class MutationEngine {
 
 		$this->auditAttempt( $change_set, $acting, MutationResult::STATUS_APPLIED, null, $approval_id );
 		if ( null !== $approval_id ) {
-			$this->approvals->markExecuted( $approval_id, 'ok', wp_json_encode( array( 'status' => MutationResult::STATUS_APPLIED ) ) ?: null, null );
+			$summary = wp_json_encode( array( 'status' => MutationResult::STATUS_APPLIED ) );
+			$this->approvals->markExecuted( $approval_id, 'ok', $summary ? $summary : null, null );
 		}
 		return MutationResult::applied( $change_set->id(), $verifications );
 	}
@@ -448,16 +449,19 @@ final class MutationEngine {
 
 		$this->audit->log(
 			array(
-				'user'        => $acting,
-				'client'      => 'mutation-engine',
-				'tool'        => 'mutation.apply',
-				'action'      => sprintf( 'changeset %s: %s', $change_set->id(), $status ),
-				'risk'        => $change_set->riskLevel(),
-				'status'      => $audit_status,
-				'error'       => $error,
-				'approval_id' => $approval_id,
+				'user'             => $acting,
+				'client'           => 'mutation-engine',
+				'tool'             => 'mutation.apply',
+				'action'           => sprintf( 'changeset %s: %s', $change_set->id(), $status ),
+				'risk'             => $change_set->riskLevel(),
+				'status'           => $audit_status,
+				'error'            => $error,
+				'approval_id'      => $approval_id,
 				'affected_objects' => array_map(
-					static fn( ChangeOperationInterface $op ): array => array( 'type' => $op->type(), 'target' => $op->target() ),
+					static fn( ChangeOperationInterface $op ): array => array(
+						'type'   => $op->type(),
+						'target' => $op->target(),
+					),
 					$change_set->operations()
 				),
 			)

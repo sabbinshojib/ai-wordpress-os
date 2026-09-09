@@ -16,9 +16,9 @@ use WP_REST_Response;
 
 final class SettingsController extends AbstractController {
 
-	public function register( string $namespace ): void {
+	public function register( string $rest_namespace ): void {
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/settings',
 			array(
 				'methods'             => 'GET',
@@ -28,7 +28,7 @@ final class SettingsController extends AbstractController {
 		);
 
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/settings',
 			array(
 				'methods'             => 'POST',
@@ -47,14 +47,14 @@ final class SettingsController extends AbstractController {
 
 		return $this->json(
 			array(
-				'settings'      => $settings->toArray(),
-				'mode_presets'  => array(
+				'settings'     => $settings->toArray(),
+				'mode_presets' => array(
 					Settings::MODE_SAFE     => Settings::MODE_PRESETS[ Settings::MODE_SAFE ],
 					Settings::MODE_BALANCED => Settings::MODE_PRESETS[ Settings::MODE_BALANCED ],
 					Settings::MODE_ADVANCED => Settings::MODE_PRESETS[ Settings::MODE_ADVANCED ],
 				),
-				'mcp_endpoint'  => rest_url( AI_WP_OS_REST_NAMESPACE . '/mcp' ),
-				'rest_base'     => rest_url( AI_WP_OS_REST_NAMESPACE ),
+				'mcp_endpoint' => rest_url( AI_WP_OS_REST_NAMESPACE . '/mcp' ),
+				'rest_base'    => rest_url( AI_WP_OS_REST_NAMESPACE ),
 			)
 		);
 	}
@@ -64,12 +64,28 @@ final class SettingsController extends AbstractController {
 	 */
 	public function update( WP_REST_Request $request ): WP_REST_Response {
 		if ( ! $this->verifyNonce( $request ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_nonce', 'message' => 'Nonce verification failed.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_nonce',
+						'message' => 'Nonce verification failed.',
+					),
+				),
+				403
+			);
 		}
 
 		$user = wp_get_current_user();
 		if ( ! $user->exists() || ! $user->has_cap( 'manage_options' ) ) {
-			return $this->json( array( 'error' => array( 'code' => 'ai_os_forbidden', 'message' => 'Administrator capability required.' ) ), 403 );
+			return $this->json(
+				array(
+					'error' => array(
+						'code'    => 'ai_os_forbidden',
+						'message' => 'Administrator capability required.',
+					),
+				),
+				403
+			);
 		}
 
 		/** @var Settings $settings */

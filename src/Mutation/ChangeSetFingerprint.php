@@ -28,6 +28,7 @@ final class ChangeSetFingerprint {
 	 * @return string sha256 hex.
 	 */
 	public static function compute( ChangeSet $change_set, ?string $diff_hash = null ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- fingerprint producer: plain json_encode() keeps byte-stable output across WP versions (P2-09 policy).
 		return hash( 'sha256', (string) json_encode( self::canonical( $change_set, $diff_hash ), JSON_UNESCAPED_SLASHES ) );
 	}
 

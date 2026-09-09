@@ -16,29 +16,29 @@ namespace AIOS\Support;
 
 final class Diff {
 
-	public static function compute( string $old, string $new, int $context_lines = 3 ): array {
+	public static function compute( string $old, string $new_value, int $context_lines = 3 ): array {
 		$old_lines = self::splitLines( $old );
-		$new_lines = self::splitLines( $new );
+		$new_lines = self::splitLines( $new_value );
 
 		$ops = self::diffOps( $old_lines, $new_lines );
 
 		return array(
-			'ops'      => $ops,
-			'summary'  => array(
+			'ops'     => $ops,
+			'summary' => array(
 				'added'     => count( array_filter( $ops, static fn( array $op ): bool => 'add' === $op['type'] ) ),
 				'removed'   => count( array_filter( $ops, static fn( array $op ): bool => 'remove' === $op['type'] ) ),
 				'unchanged' => count( array_filter( $ops, static fn( array $op ): bool => 'context' === $op['type'] ) ),
 			),
-			'unified'  => self::unified( $ops, $context_lines ),
+			'unified' => self::unified( $ops, $context_lines ),
 		);
 	}
 
 	/**
 	 * Compute only the summary counters (cheap for UI lists).
 	 */
-	public static function summary( string $old, string $new ): array {
+	public static function summary( string $old, string $new_value ): array {
 		$old_lines = self::splitLines( $old );
-		$new_lines = self::splitLines( $new );
+		$new_lines = self::splitLines( $new_value );
 		$ops       = self::diffOps( $old_lines, $new_lines );
 
 		return array(
@@ -93,8 +93,8 @@ final class Diff {
 					'old_no' => $i + 1,
 					'new_no' => $j + 1,
 				);
-				$i++;
-				$j++;
+				++$i;
+				++$j;
 			} elseif ( $lcs[ $i + 1 ][ $j ] >= $lcs[ $i ][ $j + 1 ] ) {
 				$ops[] = array(
 					'type'   => 'remove',
@@ -102,7 +102,7 @@ final class Diff {
 					'old_no' => $i + 1,
 					'new_no' => null,
 				);
-				$i++;
+				++$i;
 			} else {
 				$ops[] = array(
 					'type'   => 'add',
@@ -110,16 +110,26 @@ final class Diff {
 					'old_no' => null,
 					'new_no' => $j + 1,
 				);
-				$j++;
+				++$j;
 			}
 		}
 		while ( $i < $n ) {
-			$ops[] = array( 'type' => 'remove', 'line' => $old_lines[ $i ], 'old_no' => $i + 1, 'new_no' => null );
-			$i++;
+			$ops[] = array(
+				'type'   => 'remove',
+				'line'   => $old_lines[ $i ],
+				'old_no' => $i + 1,
+				'new_no' => null,
+			);
+			++$i;
 		}
 		while ( $j < $m ) {
-			$ops[] = array( 'type' => 'add', 'line' => $new_lines[ $j ], 'old_no' => null, 'new_no' => $j + 1 );
-			$j++;
+			$ops[] = array(
+				'type'   => 'add',
+				'line'   => $new_lines[ $j ],
+				'old_no' => null,
+				'new_no' => $j + 1,
+			);
+			++$j;
 		}
 
 		return $ops;
@@ -144,9 +154,9 @@ final class Diff {
 			}
 		}
 
-		$out    = array();
+		$out = array();
 		/** @var bool $in_hunk PHPStan: widen past the literal `false` below — this is mutated to true inside the loop before flush() ever reads it. */
-		$in_hunk = false;
+		$in_hunk        = false;
 		$hunk_old_start = 0;
 		$hunk_new_start = 0;
 		$hunk_old_count = 0;
@@ -179,10 +189,10 @@ final class Diff {
 				};
 				$hunk_body[] = $prefix . $op['line'];
 				if ( null !== $op['old_no'] ) {
-					$hunk_old_count++;
+					++$hunk_old_count;
 				}
 				if ( null !== $op['new_no'] ) {
-					$hunk_new_count++;
+					++$hunk_new_count;
 				}
 			} else {
 				$flush();

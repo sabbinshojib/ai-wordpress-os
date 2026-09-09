@@ -15,9 +15,9 @@ use WP_REST_Response;
 
 final class ContextController extends AbstractController {
 
-	public function register( string $namespace ): void {
+	public function register( string $rest_namespace ): void {
 		register_rest_route(
-			$namespace,
+			$rest_namespace,
 			'/context',
 			array(
 				'methods'             => 'GET',
@@ -45,7 +45,7 @@ final class ContextController extends AbstractController {
 
 		// Fill the live tool count for the dashboard.
 		/** @var \AIOS\Tools\ToolRegistry $tools */
-		$tools = $this->container->get( \AIOS\Tools\ToolRegistry::class );
+		$tools                 = $this->container->get( \AIOS\Tools\ToolRegistry::class );
 		$map['ai_os']['tools'] = $tools->countAvailable();
 
 		return $this->json( $map );

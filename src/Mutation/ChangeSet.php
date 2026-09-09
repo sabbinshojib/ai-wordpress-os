@@ -131,14 +131,14 @@ final class ChangeSet {
 	 */
 	public function describe(): array {
 		return array(
-			'id'               => $this->id,
+			'id'                => $this->id,
 			'principal_user_id' => $this->principalUserId,
-			'principal_type'   => $this->principalType,
-			'site_id'          => $this->siteId,
-			'created_at'       => $this->createdAt,
-			'risk_level'       => $this->riskLevel(),
-			'metadata'         => $this->metadata,
-			'operations'       => array_map(
+			'principal_type'    => $this->principalType,
+			'site_id'           => $this->siteId,
+			'created_at'        => $this->createdAt,
+			'risk_level'        => $this->riskLevel(),
+			'metadata'          => $this->metadata,
+			'operations'        => array_map(
 				static fn( ChangeOperationInterface $operation ): array => array(
 					'id'     => $operation->id(),
 					'type'   => $operation->type(),

@@ -56,14 +56,17 @@ final class AuditLogger {
 	public function log( array $event ): int {
 		$user = $event['user'] ?? null;
 
-		$args = null;
+		$args      = null;
 		$args_hash = '';
 		if ( isset( $event['args'] ) && is_array( $event['args'] ) ) {
 			// Hash is over the REDACTED json so the log stays consistent.
-			$redacted   = Sanitize::redact( $event['args'] );
-			$args_json  = wp_json_encode( $redacted ) ?: '{}';
-			$args_hash  = hash( 'sha256', $args_json );
-			$args       = $this->settings->auditLogArgs() ? $args_json : null;
+			$redacted  = Sanitize::redact( $event['args'] );
+			$args_json = wp_json_encode( $redacted );
+			if ( ! $args_json ) {
+				$args_json = '{}';
+			}
+			$args_hash = hash( 'sha256', $args_json );
+			$args      = $this->settings->auditLogArgs() ? $args_json : null;
 		}
 
 		try {

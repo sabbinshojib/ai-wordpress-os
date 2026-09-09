@@ -14,10 +14,10 @@ namespace AIOS\Mutation;
 
 final class OperationDiff {
 
-	public const KIND_TEXT           = 'text';
-	public const KIND_VALUE          = 'value';
-	public const KIND_BINARY         = 'binary_redacted';
-	public const KIND_SECRET         = 'redacted_value';
+	public const KIND_TEXT   = 'text';
+	public const KIND_VALUE  = 'value';
+	public const KIND_BINARY = 'binary_redacted';
+	public const KIND_SECRET = 'redacted_value';
 
 	/**
 	 * @param array<string, mixed> $summary Safe counters (e.g. added/removed line counts, byte lengths) — never raw content.

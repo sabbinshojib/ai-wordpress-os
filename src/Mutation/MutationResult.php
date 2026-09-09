@@ -11,20 +11,20 @@ namespace AIOS\Mutation;
 
 final class MutationResult {
 
-	public const STATUS_APPLIED             = 'applied';
-	public const STATUS_APPROVAL_REQUIRED   = 'approval_required';
-	public const STATUS_POLICY_DENIED       = 'policy_denied';
-	public const STATUS_SNAPSHOT_FAILED     = 'snapshot_failed';
-	public const STATUS_APPLY_FAILED        = 'apply_failed';
-	public const STATUS_VERIFICATION_FAILED = 'verification_failed';
-	public const STATUS_ROLLED_BACK         = 'rolled_back';
-	public const STATUS_ROLLBACK_FAILED     = 'rollback_failed';
-	public const STATUS_REJECTED            = 'rejected';
-	public const STATUS_STALE_STATE         = 'stale_state';
-	public const STATUS_FINGERPRINT_MISMATCH = 'fingerprint_mismatch';
-	public const STATUS_ALREADY_COMPLETED   = 'already_completed';
+	public const STATUS_APPLIED                  = 'applied';
+	public const STATUS_APPROVAL_REQUIRED        = 'approval_required';
+	public const STATUS_POLICY_DENIED            = 'policy_denied';
+	public const STATUS_SNAPSHOT_FAILED          = 'snapshot_failed';
+	public const STATUS_APPLY_FAILED             = 'apply_failed';
+	public const STATUS_VERIFICATION_FAILED      = 'verification_failed';
+	public const STATUS_ROLLED_BACK              = 'rolled_back';
+	public const STATUS_ROLLBACK_FAILED          = 'rollback_failed';
+	public const STATUS_REJECTED                 = 'rejected';
+	public const STATUS_STALE_STATE              = 'stale_state';
+	public const STATUS_FINGERPRINT_MISMATCH     = 'fingerprint_mismatch';
+	public const STATUS_ALREADY_COMPLETED        = 'already_completed';
 	public const STATUS_MANUAL_RECOVERY_REQUIRED = 'manual_recovery_required';
-	public const STATUS_RECOVERY_NOT_NEEDED = 'recovery_not_needed';
+	public const STATUS_RECOVERY_NOT_NEEDED      = 'recovery_not_needed';
 
 	/**
 	 * @param VerificationResult[] $verifications

@@ -79,7 +79,7 @@ final class ChangeSetRepository {
 		}
 
 		$payload      = OperationRegistry::serialize( $change_set );
-		$payload_json = (string) json_encode( $payload, JSON_UNESCAPED_SLASHES );
+		$payload_json = (string) wp_json_encode( $payload, JSON_UNESCAPED_SLASHES );
 
 		$now       = $this->now();
 		$insert_id = $this->db->insert(
@@ -206,7 +206,11 @@ final class ChangeSetRepository {
 		$updated = $this->db->update(
 			$this->table(),
 			$data,
-			array( 'change_set_id' => $id, 'state' => $from_state, 'state_version' => $expected_version )
+			array(
+				'change_set_id' => $id,
+				'state'         => $from_state,
+				'state_version' => $expected_version,
+			)
 		);
 		return 1 === $updated;
 	}
@@ -222,7 +226,7 @@ final class ChangeSetRepository {
 	 * @param array<string, mixed> $recovery_state
 	 */
 	public function saveRecovery( string $id, array $recovery_state ): bool {
-		$json = (string) json_encode( $recovery_state, JSON_UNESCAPED_SLASHES );
+		$json    = (string) wp_json_encode( $recovery_state, JSON_UNESCAPED_SLASHES );
 		$updated = $this->db->update(
 			$this->table(),
 			array(
@@ -261,14 +265,22 @@ final class ChangeSetRepository {
 	 * this is a single conditional UPDATE, safe across processes.
 	 */
 	public function acquireLease( string $id, string $owner_token, int $ttl_seconds = self::LEASE_DEFAULT_TTL_SECONDS ): bool {
-		$now = $this->now();
+		$now     = $this->now();
 		$expires = gmdate( 'Y-m-d H:i:s', time() + max( 1, $ttl_seconds ) );
 
 		// Try to take an unheld or expired lease.
 		$updated = $this->db->update(
 			$this->table(),
-			array( 'lease_owner' => $owner_token, 'lease_acquired_at' => $now, 'lease_expires_at' => $expires, 'updated_at' => $now ),
-			array( 'change_set_id' => $id, 'lease_owner' => '' )
+			array(
+				'lease_owner'       => $owner_token,
+				'lease_acquired_at' => $now,
+				'lease_expires_at'  => $expires,
+				'updated_at'        => $now,
+			),
+			array(
+				'change_set_id' => $id,
+				'lease_owner'   => '',
+			)
 		);
 		if ( $updated > 0 ) {
 			return true;
@@ -286,8 +298,16 @@ final class ChangeSetRepository {
 
 		$updated = $this->db->update(
 			$this->table(),
-			array( 'lease_owner' => $owner_token, 'lease_acquired_at' => $now, 'lease_expires_at' => $expires, 'updated_at' => $now ),
-			array( 'change_set_id' => $id, 'lease_expires_at' => (string) $expires_at )
+			array(
+				'lease_owner'       => $owner_token,
+				'lease_acquired_at' => $now,
+				'lease_expires_at'  => $expires,
+				'updated_at'        => $now,
+			),
+			array(
+				'change_set_id'    => $id,
+				'lease_expires_at' => (string) $expires_at,
+			)
 		);
 		return $updated > 0;
 	}
@@ -295,16 +315,31 @@ final class ChangeSetRepository {
 	public function releaseLease( string $id, string $owner_token ): bool {
 		$updated = $this->db->update(
 			$this->table(),
-			array( 'lease_owner' => '', 'lease_acquired_at' => null, 'lease_expires_at' => null, 'updated_at' => $this->now() ),
-			array( 'change_set_id' => $id, 'lease_owner' => $owner_token )
+			array(
+				'lease_owner'       => '',
+				'lease_acquired_at' => null,
+				'lease_expires_at'  => null,
+				'updated_at'        => $this->now(),
+			),
+			array(
+				'change_set_id' => $id,
+				'lease_owner'   => $owner_token,
+			)
 		);
 		return $updated > 0;
 	}
 
 	public function recordAttempt( string $id ): void {
-		$row = $this->load( $id );
+		$row      = $this->load( $id );
 		$attempts = null === $row ? 1 : ( (int) ( $row['attempt_count'] ?? 0 ) + 1 );
-		$this->db->update( $this->table(), array( 'attempt_count' => $attempts, 'updated_at' => $this->now() ), array( 'change_set_id' => $id ) );
+		$this->db->update(
+			$this->table(),
+			array(
+				'attempt_count' => $attempts,
+				'updated_at'    => $this->now(),
+			),
+			array( 'change_set_id' => $id )
+		);
 	}
 
 	/**

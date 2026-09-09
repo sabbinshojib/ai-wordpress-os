@@ -89,7 +89,11 @@ final class DiffRenderer {
 				$operation->type(),
 				$operation->target(),
 				self::isTextLike( $operation->type() ) ? OperationDiff::KIND_TEXT : OperationDiff::KIND_VALUE,
-				array( 'before_bytes' => $before_len, 'after_bytes' => $after_len, 'reason' => 'content exceeds diff size bound' ),
+				array(
+					'before_bytes' => $before_len,
+					'after_bytes'  => $after_len,
+					'reason'       => 'content exceeds diff size bound',
+				),
 				null,
 				true,
 				self::hashOrNull( $before_string ),
@@ -143,7 +147,7 @@ final class DiffRenderer {
 		if ( is_string( $value ) ) {
 			return $value;
 		}
-		return (string) json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
+		return (string) wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT );
 	}
 
 	private static function looksSecret( ?string $value ): bool {

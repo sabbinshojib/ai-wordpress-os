@@ -31,6 +31,7 @@ abstract class AbstractOperation implements ChangeOperationInterface {
 	 * so it is always safe to store/log even for secret-shaped values.
 	 */
 	protected static function fingerprintOf( mixed $value ): string {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- fingerprint producer: plain json_encode() keeps byte-stable output across WP versions (P2-09 policy).
 		return hash( 'sha256', (string) json_encode( $value, JSON_UNESCAPED_SLASHES ) );
 	}
 

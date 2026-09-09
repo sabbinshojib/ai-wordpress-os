@@ -51,7 +51,10 @@ final class FileCreateOperation extends AbstractOperation {
 	}
 
 	public function describe(): array {
-		return array( 'path' => $this->path, 'bytes' => strlen( $this->content ) );
+		return array(
+			'path'  => $this->path,
+			'bytes' => strlen( $this->content ),
+		);
 	}
 
 	public function captureSnapshot(): Snapshot {
@@ -64,7 +67,15 @@ final class FileCreateOperation extends AbstractOperation {
 			throw new MutationException( 'file_create.already_exists', 'A file already exists at this path; use FilePatchOperation to modify it.' );
 		}
 		// Nothing to back up — rollback is "delete the file this operation created".
-		return new Snapshot( $this->id, self::TYPE, array( 'existed' => false, 'path' => $this->resolvedPath, 'precondition' => $this->currentPreconditionFingerprint() ) );
+		return new Snapshot(
+			$this->id,
+			self::TYPE,
+			array(
+				'existed'      => false,
+				'path'         => $this->resolvedPath,
+				'precondition' => $this->currentPreconditionFingerprint(),
+			)
+		);
 	}
 
 	public function apply(): void {
@@ -91,14 +102,19 @@ final class FileCreateOperation extends AbstractOperation {
 
 	public function rollback( Snapshot $snapshot ): RollbackRecord {
 		$path = (string) ( $snapshot->state()['path'] ?? $this->resolvedPath );
-		if ( file_exists( $path ) && ! @unlink( $path ) ) {
+		if ( file_exists( $path ) && ! wp_delete_file( $path ) ) {
 			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to delete the created file during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
 	}
 
 	public function payloadFingerprint(): string {
-		return self::fingerprintOf( array( 'path' => $this->path, 'content' => $this->content ) );
+		return self::fingerprintOf(
+			array(
+				'path'    => $this->path,
+				'content' => $this->content,
+			)
+		);
 	}
 
 	/**
@@ -121,6 +137,9 @@ final class FileCreateOperation extends AbstractOperation {
 	}
 
 	public function toSpec(): array {
-		return array( 'path' => $this->path, 'content' => $this->content );
+		return array(
+			'path'    => $this->path,
+			'content' => $this->content,
+		);
 	}
 }

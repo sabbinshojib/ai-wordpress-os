@@ -66,9 +66,9 @@ final class CliCommands extends WP_CLI_Command {
 	 *     wp ai-os migrate
 	 */
 	public function migrate(): void {
-		$database  = new Database();
-		$migrator  = new Migrator();
-		$result    = $migrator->migrate( $database );
+		$database = new Database();
+		$migrator = new Migrator();
+		$result   = $migrator->migrate( $database );
 
 		if ( array() === $result['applied'] ) {
 			WP_CLI::success( 'No pending migrations.' );
@@ -109,10 +109,10 @@ final class CliCommands extends WP_CLI_Command {
 		$rows = array();
 		foreach ( $registry->toArray( $only_available ) as $tool ) {
 			$rows[] = array(
-				'tool'        => $tool['name'],
-				'category'    => $tool['category'],
-				'risk'        => (string) $tool['riskLevel'],
-				'permission'  => (string) $tool['permissionLevel'],
+				'tool'         => $tool['name'],
+				'category'     => $tool['category'],
+				'risk'         => (string) $tool['riskLevel'],
+				'permission'   => (string) $tool['permissionLevel'],
 				'confirmation' => $tool['confirmation'],
 			);
 		}

@@ -61,10 +61,10 @@ final class ToolResult {
 	 * was created, and the client is told how to proceed.
 	 */
 	public static function approvalRequired( int $approval_id, array $meta = array() ): self {
-		$result = new self( true, array(), null );
+		$result                    = new self( true, array(), null );
 		$result->isApprovalRequest = true;
-		$result->approvalId = $approval_id;
-		$result->data = $meta;
+		$result->approvalId        = $approval_id;
+		$result->data              = $meta;
 		return $result;
 	}
 
@@ -99,7 +99,10 @@ final class ToolResult {
 	 * Attach a textual content block (MCP content[]).
 	 */
 	public function withText( string $text ): self {
-		$this->textContent[] = array( 'type' => 'text', 'text' => $text );
+		$this->textContent[] = array(
+			'type' => 'text',
+			'text' => $text,
+		);
 		return $this;
 	}
 

@@ -99,15 +99,15 @@ final class Ability {
 		string $integration = 'core',
 		string $version = '1.0.0'
 	) {
-		$this->name              = $name;
-		$this->description       = $description;
-		$this->inputSchema       = $inputSchema;
-		$this->outputSchema      = $outputSchema;
-		$this->level             = $level;
+		$this->name               = $name;
+		$this->description        = $description;
+		$this->inputSchema        = $inputSchema;
+		$this->outputSchema       = $outputSchema;
+		$this->level              = $level;
 		$this->permissionCallback = $permissionCallback;
-		$this->executeCallback   = $executeCallback;
-		$this->integration       = $integration;
-		$this->version           = $version;
+		$this->executeCallback    = $executeCallback;
+		$this->integration        = $integration;
+		$this->version            = $version;
 	}
 
 	public function name(): string {

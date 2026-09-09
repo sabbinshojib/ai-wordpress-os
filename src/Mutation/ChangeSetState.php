@@ -16,24 +16,24 @@ namespace AIOS\Mutation;
 
 final class ChangeSetState {
 
-	public const PLANNED           = 'planned';
-	public const POLICY_REJECTED   = 'policy_rejected';
-	public const SNAPSHOTTED       = 'snapshotted';
-	public const DIFF_READY        = 'diff_ready';
-	public const PENDING_APPROVAL  = 'pending_approval';
-	public const APPROVED          = 'approved';
-	public const APPLYING          = 'applying';
-	public const VERIFYING         = 'verifying';
-	public const COMPLETED         = 'completed';
-	public const FAILED            = 'failed';
-	public const STALE             = 'stale';
-	public const ROLLBACK_REQUIRED = 'rollback_required';
-	public const ROLLING_BACK      = 'rolling_back';
-	public const ROLLED_BACK       = 'rolled_back';
-	public const ROLLBACK_FAILED   = 'rollback_failed';
-	public const EXPIRED           = 'expired';
-	public const CANCELLED         = 'cancelled';
-	public const REJECTED          = 'rejected';
+	public const PLANNED                  = 'planned';
+	public const POLICY_REJECTED          = 'policy_rejected';
+	public const SNAPSHOTTED              = 'snapshotted';
+	public const DIFF_READY               = 'diff_ready';
+	public const PENDING_APPROVAL         = 'pending_approval';
+	public const APPROVED                 = 'approved';
+	public const APPLYING                 = 'applying';
+	public const VERIFYING                = 'verifying';
+	public const COMPLETED                = 'completed';
+	public const FAILED                   = 'failed';
+	public const STALE                    = 'stale';
+	public const ROLLBACK_REQUIRED        = 'rollback_required';
+	public const ROLLING_BACK             = 'rolling_back';
+	public const ROLLED_BACK              = 'rolled_back';
+	public const ROLLBACK_FAILED          = 'rollback_failed';
+	public const EXPIRED                  = 'expired';
+	public const CANCELLED                = 'cancelled';
+	public const REJECTED                 = 'rejected';
 	public const MANUAL_RECOVERY_REQUIRED = 'manual_recovery_required';
 
 	/**

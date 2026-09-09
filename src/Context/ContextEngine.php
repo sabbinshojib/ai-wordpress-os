@@ -68,11 +68,11 @@ final class ContextEngine {
 		return array(
 			'generated_at' => gmdate( 'c' ),
 			'wordpress'    => array(
-				'version'   => get_bloginfo( 'version' ),
-				'language'  => get_bloginfo( 'language' ),
-				'multisite' => is_multisite(),
-				'timezone'  => wp_timezone_string(),
-				'https'     => is_ssl(),
+				'version'     => get_bloginfo( 'version' ),
+				'language'    => get_bloginfo( 'language' ),
+				'multisite'   => is_multisite(),
+				'timezone'    => wp_timezone_string(),
+				'https'       => is_ssl(),
 				'environment' => function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'unknown',
 			),
 			'site'         => array(
@@ -87,9 +87,9 @@ final class ContextEngine {
 			'system'       => $this->system->snapshot(),
 			'integrations' => $this->plugins->integrations(),
 			'ai_os'        => array(
-				'version'   => AI_WP_OS_VERSION,
-				'tools'     => 0, // Filled by the REST layer when serving.
-				'mode'      => $this->settings->mode(),
+				'version' => AI_WP_OS_VERSION,
+				'tools'   => 0, // Filled by the REST layer when serving.
+				'mode'    => $this->settings->mode(),
 			),
 		);
 	}
@@ -108,11 +108,16 @@ final class ContextEngine {
 		add_action( 'activated_plugin', array( self::class, 'invalidate' ) );
 		add_action( 'deactivated_plugin', array( self::class, 'invalidate' ) );
 		add_action( 'switch_theme', array( self::class, 'invalidate' ) );
-		add_action( 'updated_option', static function ( string $option ): void {
-			// Site-shaping options only; not every option update.
-			if ( in_array( $option, array( 'blogname', 'blogdescription', 'permalink_structure', 'active_plugins', 'users_can_register' ), true ) ) {
-				self::invalidate();
-			}
-		}, 10, 1 );
+		add_action(
+			'updated_option',
+			static function ( string $option ): void {
+				// Site-shaping options only; not every option update.
+				if ( in_array( $option, array( 'blogname', 'blogdescription', 'permalink_structure', 'active_plugins', 'users_can_register' ), true ) ) {
+					self::invalidate();
+				}
+			},
+			10,
+			1
+		);
 	}
 }

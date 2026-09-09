@@ -65,11 +65,19 @@ final class FileDeleteOperation extends AbstractOperation {
 		if ( false === $original ) {
 			throw new MutationException( 'file_delete.read_failed', 'Failed to read the file content before deletion.' );
 		}
-		return new Snapshot( $this->id, self::TYPE, array( 'path' => $this->resolvedPath, 'original_content' => $original, 'precondition' => self::fingerprintOf( $original ) ) );
+		return new Snapshot(
+			$this->id,
+			self::TYPE,
+			array(
+				'path'             => $this->resolvedPath,
+				'original_content' => $original,
+				'precondition'     => self::fingerprintOf( $original ),
+			)
+		);
 	}
 
 	public function apply(): void {
-		if ( ! @unlink( $this->resolvedPath ) ) {
+		if ( ! wp_delete_file( $this->resolvedPath ) ) {
 			throw new MutationException( 'file_delete.failed', 'Failed to delete the file.' );
 		}
 	}
@@ -91,7 +99,12 @@ final class FileDeleteOperation extends AbstractOperation {
 	}
 
 	public function payloadFingerprint(): string {
-		return self::fingerprintOf( array( 'path' => $this->path, 'action' => 'delete' ) );
+		return self::fingerprintOf(
+			array(
+				'path'   => $this->path,
+				'action' => 'delete',
+			)
+		);
 	}
 
 	public function currentPreconditionFingerprint(): string {
