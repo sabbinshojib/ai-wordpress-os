@@ -1547,13 +1547,12 @@ function wp_delete_attachment( int $id, bool $force = false ): bool|WP_Post {
         return $deleted;
 }
 
-/** Mirrors core wp_delete_file(): returns false when the file is missing
- * or cannot be removed, true on successful removal. */
-function wp_delete_file( string $file ): bool {
-        if ( ! file_exists( $file ) ) {
-                return false;
+/** Mirrors core wp_delete_file(): void return (a filtered @unlink()
+ * wrapper) — callers must never branch on its return value. */
+function wp_delete_file( string $file ): void {
+        if ( file_exists( $file ) ) {
+                unlink( $file );
         }
-        return unlink( $file );
 }
 
 function wp_get_attachment_url( int $id ): string|false {

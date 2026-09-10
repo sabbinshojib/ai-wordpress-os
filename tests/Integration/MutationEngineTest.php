@@ -602,4 +602,39 @@ final class MutationEngineTest extends TestCase {
 		$result = $this->engine->resumeApproved( (int) $submitted->approvalId(), $reversed, 'approved', $admin );
 		$this->assertEquals( MutationResult::STATUS_FINGERPRINT_MISMATCH, $result->status() );
 	}
+
+	// ================================================================
+	// wp_delete_file() void-return contract — real WordPress core's
+	// wp_delete_file() returns void (a filtered @unlink() wrapper), so
+	// file.delete apply() and file.create rollback() must never branch
+	// on its return value. Regression coverage for a defect where both
+	// were written as if it returned bool, which would make a real,
+	// successful deletion report as a failure on every invocation.
+	// ================================================================
+
+	public function test_file_delete_apply_succeeds_on_real_deletion_despite_wp_delete_file_returning_void(): void {
+		$path = $this->tempRoot . '/to-delete.txt';
+		file_put_contents( $path, 'delete me' );
+
+		$op = new FileDeleteOperation( 'to-delete.txt', $this->pathGuard );
+		$op->captureSnapshot();
+		$op->apply(); // must not throw file_delete.failed
+
+		$this->assertFalse( file_exists( $path ), 'the file must actually be gone' );
+		$this->assertTrue( $op->verify()->ok() );
+	}
+
+	public function test_file_create_rollback_reports_success_on_real_deletion_despite_wp_delete_file_returning_void(): void {
+		$path = $this->tempRoot . '/created.txt';
+
+		$op       = new FileCreateOperation( 'created.txt', 'new content', $this->pathGuard );
+		$snapshot = $op->captureSnapshot();
+		$op->apply();
+		$this->assertTrue( file_exists( $path ), 'sanity: the file must exist before rollback' );
+
+		$record = $op->rollback( $snapshot );
+
+		$this->assertTrue( $record->ok(), 'rollback must report success — wp_delete_file() returning void must never be mistaken for failure' );
+		$this->assertFalse( file_exists( $path ), 'the created file must actually be gone after rollback' );
+	}
 }

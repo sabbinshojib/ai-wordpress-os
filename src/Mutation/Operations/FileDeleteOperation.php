@@ -77,7 +77,13 @@ final class FileDeleteOperation extends AbstractOperation {
 	}
 
 	public function apply(): void {
-		if ( ! wp_delete_file( $this->resolvedPath ) ) {
+		// wp_delete_file() returns void in real WordPress core (a
+		// filtered @unlink() wrapper) — its return value can never
+		// indicate success. Deletion is confirmed the only reliable
+		// way: checking the filesystem afterward.
+		wp_delete_file( $this->resolvedPath );
+		clearstatcache( true, $this->resolvedPath );
+		if ( file_exists( $this->resolvedPath ) ) {
 			throw new MutationException( 'file_delete.failed', 'Failed to delete the file.' );
 		}
 	}
