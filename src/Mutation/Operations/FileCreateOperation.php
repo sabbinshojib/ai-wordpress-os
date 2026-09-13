@@ -103,15 +103,14 @@ final class FileCreateOperation extends AbstractOperation {
 	public function rollback( Snapshot $snapshot ): RollbackRecord {
 		$path = (string) ( $snapshot->state()['path'] ?? $this->resolvedPath );
 		// wp_delete_file() returns void in real WordPress core — its
-		// return value can never indicate success. Deletion is
-		// confirmed the only reliable way: checking the filesystem
-		// afterward.
+		// return value can never indicate success. It already no-ops
+		// when the target does not exist (mirrored by the test shim),
+		// so it is called unconditionally; deletion is confirmed the
+		// only reliable way: a single filesystem check afterward.
+		wp_delete_file( $path );
+		clearstatcache( true, $path );
 		if ( file_exists( $path ) ) {
-			wp_delete_file( $path );
-			clearstatcache( true, $path );
-			if ( file_exists( $path ) ) {
-				return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to delete the created file during rollback' );
-			}
+			return RollbackRecord::failure( $this->id, $snapshot->id(), 'failed to delete the created file during rollback' );
 		}
 		return RollbackRecord::success( $this->id, $snapshot->id() );
 	}
