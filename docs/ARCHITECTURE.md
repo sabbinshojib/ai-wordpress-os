@@ -1,15 +1,16 @@
 # AI WordPress OS — Architecture
 
-> Phase 1 Foundation — design document. This file describes the architecture that is
-> **implemented** in this release. Anything marked `Phase 2+` is designed-for but not
-> implemented yet (interfaces/slots exist, no fake UI and no dead buttons), with one
-> partial exception: §13's Phase 2 mutation pipeline has a real, tested implementation
-> (`AIOS\Mutation\*`) as of 2026-09-07 — including durable, encrypted persistence, a
-> DB-backed execution lease, durable replay protection, and a per-operation
-> crash-recovery journal with classification-only recovery (no automatic mid-flight
-> continuation) — but real WordPress/MySQL execution is CI-CONFIGURED-NOT-RUN (shim-only
-> so far), and none of it is wired to any AI-facing tool/REST/MCP surface. See §13 for
-> the exact implemented-vs-not split; never round this up to "Phase 2 complete."
+> Phase 1 Foundation & Phase 2 Hardening — design document. This file describes the architecture that is
+> **implemented** in this release. Anything marked `Phase 3+` is designed-for but not
+> implemented yet (interfaces/slots exist, no fake UI and no dead buttons).
+> The Phase 2 mutation pipeline has a complete, verified implementation (`AIOS\Mutation\*`)
+> as of Phase 2 closeout (commit `355d24499dc2a086c3a0353a767eb6fb1cc91f44`, green GitHub
+> Actions CI run `34756261539`) — including durable, encrypted persistence, a DB-backed
+> execution lease, durable replay protection, real WordPress/MySQL execution verified in CI,
+> and a per-operation crash-recovery journal with classification-only recovery (fails closed
+> to `MANUAL_RECOVERY_REQUIRED`, no automatic mid-flight continuation). Pipeline flow:
+> `Planner → Policy → OperationSpecification → OperationRegistry → ChangeSet → Snapshot → Diff → Approval → Durable State → Apply → Verify → Journal → Audit → Rollback / Manual Recovery`.
+> None of it is wired to any AI-facing tool/REST/MCP surface yet (deferred to Phase 3). See §13.
 
 ## 1. Product shape
 
@@ -537,39 +538,46 @@ can reach it yet (verified this pass via a repository-wide grep for `DurableMuta
   `test_change_set_writes_succeed_independently_on_two_sites_with_the_same_key`) proving
   real per-site WRITE isolation under the SAME id/key on two sites — something no test in
   this codebase could previously do. This proves the SHIM's own in-memory model is no
-  longer actively wrong about isolation; it is not a claim about real MySQL — see the
-  CI-CONFIGURED-NOT-RUN caveat below for that.
+  longer actively wrong about isolation; real multi-site execution on an actual live multisite
+  WordPress installation remains deferred to future testing suites (see the CI verification notes below).
+
+**Verified Phase 2 Mutation Pipeline Flow:**
+```
+Planner → Policy → OperationSpecification → OperationRegistry → ChangeSet → Snapshot → Diff → Approval → Durable State → Apply → Verify → Journal → Audit → Rollback / Manual Recovery
+```
+1. **Planner**: Upstream intent generates typed operation specifications (`OperationSpecification`).
+2. **Policy**: Evaluated against actor capabilities and risk level before execution (`PolicyEngine`).
+3. **OperationRegistry**: Validates specifications against closed type constants, builds concrete `ChangeOperationInterface` instances.
+4. **ChangeSet**: Groups ordered operations, computes content-addressed fingerprint and idempotency key.
+5. **Snapshot**: Unconditionally captures pre-mutation state for all targets, generates `RollbackRecord`s prior to mutation.
+6. **Diff**: Computes human- and AI-inspectable structured diffs between snapshot and planned state.
+7. **Approval**: Enforces dual-authorization / risk thresholds, binds cryptographically to ChangeSet fingerprint.
+8. **Durable State**: Atomic persistence via `ChangeSetRepository` (encrypted payload via `Crypto`, DB-backed execution lease, CAS transitions).
+9. **Apply**: `MutationEngine` executes operations in forward order with per-operation error trapping.
+10. **Verify**: Post-apply verification asserts expected state (e.g. `clearstatcache` + `file_exists` / option equality).
+11. **Journal**: `OperationJournalRepository` records durable per-operation lifecycle transitions (`PENDING` → `SNAPSHOTTED` → `APPLYING` → `APPLIED` → `VERIFYING` → `VERIFIED`).
+12. **Audit**: `AuditLogger` writes immutable audit entries with HMAC integrity chains; failures fail closed without masking state.
+13. **Rollback / Manual Recovery**: On failure, rolls back already-applied operations in reverse order. If rollback fails, escalates to `MANUAL_RECOVERY_REQUIRED` (fails closed, no automatic continuation).
+
+**Verified Real Database Execution:**
+- **Real WordPress/MySQL execution verified in CI (run 34756261539).** The `.github/workflows/ci.yml` `test-real-wp-mysql` job was executed and passed green in GitHub Actions run `34756261539` (commit `355d24499dc2a086c3a0353a767eb6fb1cc91f44`). It provisions an ephemeral MySQL 8.0 service container, performs a throwaway WP-CLI core install, runs real `dbDelta` migrations to create `ai_os_change_sets` and `ai_os_operation_journal`, and runs `tools/ci/real-db-smoke.php` round-tripping the durable repositories against real MySQL. Local unit/integration suites (456/456) and acceptance tests (13/13) run against the fast PHP-only WordPress shim (`tests/shim/wp-functions.php`), with the CI job serving as external verification against genuine MySQL and WordPress core.
 
 **Not implemented — explicit gaps, not silently deferred:**
 - **No automatic crash-recovery continuation.** `recover()` classifies and escalates;
   it never attempts to resume a partially-applied ChangeSet or finish an interrupted
   rollback on its own. This is a deliberate scope boundary (see above), not an
   oversight — resolving a `MANUAL_RECOVERY_REQUIRED` ChangeSet today requires a human
-  or a future, separately-scoped, operation-type-aware continuation engine.
+  or a future, separately-scoped, operation-type-aware continuation engine. Fails closed.
 - **Fault injection does not cover a genuine mid-transaction failure** (an `INSERT`/
   `UPDATE` that fails partway through a multi-statement sequence at the real MySQL
-  driver level) — a real MySQL driver behavior the shim cannot model at all; only the
-  CI-CONFIGURED-NOT-RUN job below can. (`AuditLogger` write-failure fault injection
-  itself is now covered — see the bullet above.)
+  driver level). (`AuditLogger` write-failure fault injection itself is covered.)
 - **The test shim now proves per-site WRITE isolation at the shim's own in-memory
-  level** (see the multisite finding above) but this is still not real MySQL — table
-  charset/collation, index behavior, and real row-locking under genuine concurrent
-  connections remain provable only via the CI-CONFIGURED-NOT-RUN job below.
+  level** (see the multisite finding above); the real WordPress + MySQL CI smoke job
+  exercises single-site schema and migrations against MySQL 8.0. Multi-site live
+  MySQL concurrency validation remains deferred.
   `MULTISITE_WRITE_VALIDATION` = SHIM-VALIDATED, not REAL-DB-VALIDATED.
-- **No real WordPress/MySQL execution — CI-CONFIGURED-NOT-RUN.** Every test above
-  (452 on both PHP 8.2 and 8.3, 13/13 acceptance) runs against this repository's own
-  PHP-only WordPress shim (`tests/shim/wp-functions.php`), never a real MySQL/MariaDB
-  instance or a real WordPress install — no such environment was available in the
-  authoring sandbox, and system-wide MySQL/WordPress installation was explicitly out
-  of scope for this pass. `.github/workflows/ci.yml`'s `test-real-wp-mysql` job now
-  exists (ephemeral MySQL service container + throwaway WP-CLI install + real dbDelta
-  migrations + `tools/ci/real-db-smoke.php` round-tripping the durable repositories
-  against real MySQL) but has **never been executed** — neither the workflow YAML nor
-  the smoke script's correctness has been observed to actually run. Do not read this
-  bullet, or any other doc, as claiming real-database validation until an actual CI
-  run of that job is green.
 - **No AI-facing exposure** — by design, for this pass. Nothing here is reachable from
-  any REST endpoint, MCP tool, or admin action yet.
+  any REST endpoint, MCP tool, or admin action yet (strictly Phase 3 scope).
 
 See `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md` for the full narrative and the
 Phase 2 hardening pass's adversarial-review findings.

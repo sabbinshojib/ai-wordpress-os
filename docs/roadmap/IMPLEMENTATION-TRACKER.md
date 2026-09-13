@@ -9,6 +9,8 @@
 
 **2026-09-07 update:** Sprint 0.3A is complete on branch `sprint/0.3-security-ci` (not yet merged to `main`). All of Sprint 0.3 (T-010..T-015) is `DONE`, plus T-026/T-027/T-028 pulled forward from Sprint 0.6 (CI workflow, PHPCS, PHPStan configs). Full narrative: `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md`.
 
+**2026-09-13 update:** Phase 2 (Mutation Engine, Durable Journal, Recovery, CI & Real DB Gates) is **COMPLETE** on branch `sprint/0.3-security-ci` (validated at commit `355d24499dc2a086c3a0353a767eb6fb1cc91f44` across all required exit gates, with GitHub Actions CI run `34756261539`). Tasks T-101 through T-108 are **DONE**. T-016 (real MySQL CI target) is **DONE** via ephemeral MySQL CI smoke testing. T-026, T-027, T-028 (CI workflow, PHPCS, PHPStan) are fully executed and verified **DONE**. Phase 3 (T-109 onward) is **READY TO START** but **NOT STARTED**. Full narrative: `docs/audits/SPRINT-0.3-PHASE2-EXIT-GATE-REPORT.md`.
+
 ## Sprint 0.1 — Existing-system stabilization
 
 | Sprint | Task ID | Task | Priority | Dependency | Security impact | Tests required | Status | Evidence | Commit |
@@ -48,7 +50,7 @@ Original T-005/T-008/T-009 rows (the pre-sprint plan) are superseded by T-005b/T
 
 | Sprint | Task ID | Task | Priority | Dependency | Security impact | Tests required | Status | Evidence | Commit |
 |---|---|---|---|---|---|---|---|---|---|
-| 0.4 | T-016 | Add real MySQL/MariaDB integration test target | High | CI infra (may pull forward from Sprint 0.6) | Validates `dbDelta()` behavior beyond the test double | New CI-run integration suite | TODO | TEST-003 | |
+| 0.4 | T-016 | Add real MySQL/MariaDB integration test target | High | CI infra (may pull forward from Sprint 0.6) | Validates `dbDelta()` behavior beyond the test double | New CI-run integration suite | **DONE** — `test-real-wp-mysql` job in `.github/workflows/ci.yml` boots ephemeral MySQL 8.0 container, runs real dbDelta migrations, executes `real-db-smoke.php` (verified green in CI run `34756261539`) | TEST-003 | `41f7455`, `355d244` |
 | 0.4 | T-017 | Add schema-upgrade test (migration N applied to fixture on N-1 with real data) | High | T-016 | Prevents data loss on future schema changes | The test itself | TODO | TEST-004 | |
 | 0.4 | T-018 | Build a multisite test shim/harness | High | — | Enabler for T-009, T-019, and Sprint 0.7 multisite tests | The harness, plus at least one passing multisite test using it | **DONE early** — built as part of T-009b (Sprint 0.1, `b85feb0`): blog-scoped options/transients, `get_sites()`/`switch_to_blog()`/`restore_current_blog()`, `dbDelta()` table logging. Deliberately does not teach `wpdb` full multisite SQL-prefix parsing — real-MySQL multisite testing is still Sprint 0.7. | TEST-002 (enabler) | `b85feb0` |
 | 0.4 | T-019 | Add `uninstall.php` execution tests (both `remove_data_on_uninstall` states) | Medium | T-018 (for multisite variant) | Prevents accidental data loss or accidental data retention | The tests themselves | **DONE early** — `MultisiteLifecycleTest` + `CapabilityLifecycleTest` both invoke `uninstall.php` in-process under both retention states (Sprint 0.1, `b85feb0`/`c1fbf34`) | TEST-005 | `b85feb0` |
@@ -68,9 +70,9 @@ Original T-005/T-008/T-009 rows (the pre-sprint plan) are superseded by T-005b/T
 
 | Sprint | Task ID | Task | Priority | Dependency | Security impact | Tests required | Status | Evidence | Commit |
 |---|---|---|---|---|---|---|---|---|---|
-| 0.6 | T-026 | Add CI workflow: `composer install` → lint → `tests/run.php` → `vendor/bin/phpunit` | Critical (process) | Sprint 0.1 (T-003) | Prevents regression of every fix above from reaching a release | The workflow itself, green on the current baseline | **DONE, pulled forward into Sprint 0.3A** — `.github/workflows/ci.yml`; not yet executed against a real GitHub Actions runner (no composer/network in the authoring sandbox) — first real run establishes the actual baseline | REL-001 | `8efb2de` |
-| 0.6 | T-027 | Add PHPCS + WordPress Coding Standards config, run in CI | Medium | T-026 | None directly; improves review consistency | CI passes (or a documented, ratcheted baseline) | **DONE, pulled forward into Sprint 0.3A** — `phpcs.xml.dist` (WordPress-Extra); no ratcheted baseline file checked in on purpose (see BUG-GAP-REGISTER Sprint 0.3A summary) | REL-002 | `8efb2de` |
-| 0.6 | T-028 | Add PHPStan config, run in CI | Medium | T-026 | Can surface latent type-confusion bugs before they become security issues | CI passes (or a documented, ratcheted baseline) | **DONE, pulled forward into Sprint 0.3A** — `phpstan.neon.dist` (level 5, WordPress-aware); no baseline-suppression file checked in on purpose | REL-002 | `8efb2de` |
+| 0.6 | T-026 | Add CI workflow: `composer install` → lint → `tests/run.php` → `vendor/bin/phpunit` | Critical (process) | Sprint 0.1 (T-003) | Prevents regression of every fix above from reaching a release | The workflow itself, green on the current baseline | **DONE** — `.github/workflows/ci.yml`; verified 100% green across PHP 8.2, 8.3, and 8.4 in GitHub Actions run `34756261539` | REL-001 | `8efb2de`, `355d244` |
+| 0.6 | T-027 | Add PHPCS + WordPress Coding Standards config, run in CI | Medium | T-026 | None directly; improves review consistency | CI passes (or a documented, ratcheted baseline) | **DONE** — `phpcs.xml.dist` (WordPress-Extra); verified green with 0 errors and 0 warnings in CI run `34756261539` | REL-002 | `8efb2de`, `7a869c6` |
+| 0.6 | T-028 | Add PHPStan config, run in CI | Medium | T-026 | Can surface latent type-confusion bugs before they become security issues | CI passes (or a documented, ratcheted baseline) | **DONE** — `phpstan.neon.dist` (level 5, WordPress-aware); verified green with 0 errors in CI run `34756261539` without suppression baselines | REL-002 | `8efb2de`, `355d244` |
 | 0.6 | T-029 | Add `composer audit` to CI | Medium | `composer.lock` committed | Surfaces known-vulnerable dependency versions | CI passes | TODO | REL-003 | |
 | 0.6 | T-030 | Add `npm audit` + JS build-reproducibility check to CI | Medium | JS lockfile committed | Surfaces known-vulnerable JS dependencies; catches undetected build drift (LIKELY-003) | CI passes; diff check fails intentionally when bundle is stale | TODO | REL-003, REL-004 | |
 | 0.6 | T-031 | Commit `composer.lock` and a JS lockfile | Medium | — | Reproducible builds | N/A | TODO | ENV-003, ENV-004 | |
@@ -96,18 +98,23 @@ Original T-005/T-008/T-009 rows (the pre-sprint plan) are superseded by T-005b/T
 
 ---
 
-## Phase 2+ tracker seed (not started — sequencing only, per roadmap)
+## Phase 2 — Mutation Engine Foundation (COMPLETE)
 
 | Sprint | Task ID | Task | Priority | Dependency | Security impact | Tests required | Status | Evidence | Commit |
 |---|---|---|---|---|---|---|---|---|---|
-| 1.0 | T-101 | Transaction Engine | Critical | Sprint 0.x fully green | Foundational — every guarded mutation depends on correct transaction boundaries | Full unit + integration suite before any consumer is built | TODO | Roadmap Phase 2+ #1 | |
-| 1.0 | T-102 | ChangeSet model | Critical | T-101 | Determines what a reviewable/approvable unit of change looks like | Unit tests | TODO | Roadmap Phase 2+ #2 | |
-| 1.0 | T-103 | Snapshot Engine | High | T-102 | Basis for rollback correctness | Unit + integration tests | TODO | Roadmap Phase 2+ #3 | |
-| 1.0 | T-104 | Diff Engine | High | T-103 | Basis for human-reviewable approval previews | Unit tests | TODO | Roadmap Phase 2+ #4 | |
-| 1.1 | T-105 | Approval integration (ChangeSet-aware) | Critical | T-101..T-104 | Extends the existing, already-audited approval model — must not weaken it | Full regression of existing approval tests + new ChangeSet approval tests | TODO | Roadmap Phase 2+ #5 | |
-| 1.1 | T-106 | Guarded mutation system | Critical | T-105 | Central enforcement point for Phase 2 write safety | Extensive integration tests | TODO | Roadmap Phase 2+ #6 | |
-| 1.2 | T-107 | Verification engine | High | T-106 | Confirms a mutation had its intended (and only its intended) effect | Integration tests | TODO | Roadmap Phase 2+ #7 | |
-| 1.2 | T-108 | Rollback system | Critical | T-103, T-106 | Must be trustworthy before any destructive Phase-2 capability ships | Integration tests including forced-failure rollback scenarios | TODO | Roadmap Phase 2+ #8 | |
-| 1.3 | T-109 | Jobs / background execution | High | T-101 | Required before long-running mutations are safe to expose | Job-queue integration tests | TODO | Roadmap Phase 2+ #9 | |
+| 1.0 | T-101 | Transaction Engine | Critical | Sprint 0.x fully green | Foundational — every guarded mutation depends on correct transaction boundaries | Full unit + integration suite (`DurableMutationCoordinator`, CAS transitions, leases) | **DONE** | Roadmap Phase 2 #1 | `355d244` |
+| 1.0 | T-102 | ChangeSet model | Critical | T-101 | Determines what a reviewable/approvable unit of change looks like | Unit + integration tests (`ChangeSet`, `ChangeSetRepository`, `TypedChangeSetBuilder`) | **DONE** | Roadmap Phase 2 #2 | `355d244` |
+| 1.0 | T-103 | Snapshot Engine | High | T-102 | Basis for rollback correctness | Unit + integration tests (`Snapshot`, pre-apply capture across all 6 operations) | **DONE** | Roadmap Phase 2 #3 | `355d244` |
+| 1.0 | T-104 | Diff Engine | High | T-103 | Basis for human-reviewable approval previews | Unit tests (`DiffRenderer`, `MutationDiff`, `OperationDiff`) | **DONE** | Roadmap Phase 2 #4 | `355d244` |
+| 1.1 | T-105 | Approval integration (ChangeSet-aware) | Critical | T-101..T-104 | Extends the existing, already-audited approval model — must not weaken it | Regression of existing approval tests + ChangeSet fingerprinting & risk gating | **DONE** | Roadmap Phase 2 #5 | `355d244` |
+| 1.1 | T-106 | Guarded mutation system | Critical | T-105 | Central enforcement point for Phase 2 write safety | Extensive integration tests (`MutationEngine`, `OperationRegistry`, `OperationSpecification`, `PathGuard` write safety) | **DONE** | Roadmap Phase 2 #6 | `355d244` |
+| 1.2 | T-107 | Verification engine | High | T-106 | Confirms a mutation had its intended (and only its intended) effect | Integration tests (`VerificationResult`, post-apply filesystem/post/option/meta assertions) | **DONE** | Roadmap Phase 2 #7 | `355d244` |
+| 1.2 | T-108 | Rollback system | Critical | T-103, T-106 | Must be trustworthy before any destructive Phase-2 capability ships | Integration tests including forced-failure rollback & journal recovery escalation | **DONE** | Roadmap Phase 2 #8 | `355d244` |
 
-Later Phase 2+ items (WordPress developer capabilities, Gutenberg, Elementor, WooCommerce, ACF/MetaBox/Pods, forms, SEO, staging/deployment, visual QA, multi-agent orchestration, enterprise RBAC) are intentionally not pre-seeded with task IDs here — they should be broken down at the start of their respective sprint, once the Transaction/ChangeSet/Snapshot/Diff/Rollback foundation (T-101..T-108) is complete and stable, per the dependency ordering in `docs/roadmap/ENTERPRISE-ROADMAP.md`.
+## Phase 3+ tracker seed (READY TO START — NOT STARTED)
+
+| Sprint | Task ID | Task | Priority | Dependency | Security impact | Tests required | Status | Evidence | Commit |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.3 | T-109 | Jobs / background execution | High | T-101 | Required before long-running mutations are safe to expose | Job-queue integration tests | TODO | Roadmap Phase 3 | |
+
+Later Phase 3+ items (WordPress developer capabilities, Gutenberg, Elementor, WooCommerce, ACF/MetaBox/Pods, forms, SEO, staging/deployment, visual QA, multi-agent orchestration, enterprise RBAC) are intentionally not pre-seeded with task IDs here — they will be broken down at the start of their respective sprint now that the Phase 2 foundation (T-101..T-108) is verified complete and closed.

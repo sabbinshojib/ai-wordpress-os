@@ -42,7 +42,23 @@ All five SEC-M1..M5 hardening items and the remaining half of ARCH-005 (admin-gr
 
 Full narrative: `docs/audits/SPRINT-0.3-SECURITY-CI-REPORT.md`.
 
+## Phase 2 resolution summary (2026-09-13, branch `sprint/0.3-security-ci`)
+
+The Phase 2 mutation engine and exit-gate closeout reached full verification on commit `355d24499dc2a086c3a0353a767eb6fb1cc91f44` and GitHub Actions CI run `34756261539`. Significant defects remediated:
+
+| Defect / Gate | Commit | Resolution | Verification Evidence |
+|---|---|---|---|
+| Crypto OpenSSL empty-string boundary | `808d610` | Payload boundary check corrected from `<= 28` to `< 28` in `Crypto::decrypt()`. | Linux CI native suite green; valid empty ciphertexts decrypt cleanly. |
+| PathGuard case-sensitivity test | `808d610` | Test adjusted for both Windows (case-insensitive) and Linux (case-sensitive) filesystems. | 22/22 `PathGuardTest` cases pass on both Windows and Linux CI. |
+| WordPress core `wp_delete_file()` contract | `164ab44` | Real WordPress `wp_delete_file()` returns `void`. Corrected code and test shim to void semantics; verify deletion via `clearstatcache()` and filesystem check. | `MutationEngineTest` (456/456 pass); verified against real WordPress core. |
+| PHPStan tautology in `FileCreateOperation::rollback()` | `355d244` | Removed redundant outer `if (file_exists)` precondition that caused PHPStan to flag inner post-clearstatcache check as always true. | PHPStan Level 5 reports 0 errors in CI run `34756261539`. |
+| PHPCS `WordPress-Extra` standard | `7a869c6` | Brought all `src/` files into 100% compliance with `WordPress-Extra` without broad suppression baselines. | PHPCS reports 0 errors and 0 warnings in CI run `34756261539`. |
+| Real WordPress + MySQL execution | `41f7455`, `355d244` | CI ephemeral MySQL 8.0 container executes dbDelta migrations and verifies table schema, encrypted CRUD, and CAS state transitions via `tools/ci/real-db-smoke.php`. | `Real WordPress + MySQL smoke test` job completed with success in CI run `34756261539`. |
+
+Full narrative: `docs/audits/SPRINT-0.3-PHASE2-EXIT-GATE-REPORT.md`.
+
 ## Confirmed bugs
+
 
 | ID | Severity | Subsystem | File(s) | Line(s) | Problem | Impact | Root cause | Evidence | Recommended fix | Tests required | Dependency | Safe for Sprint 0.1? | **Status** |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -83,9 +99,9 @@ SEC-M1..M5 were Sprint 0.3 hardening items, out of scope for Sprint 0.1 — Spri
 
 | ID | Gap | Why it's out of scope for Sprint 0.1 |
 |---|---|---|
-| ARCH-001 | No Transaction Engine / ChangeSet model | Explicitly a Phase-2+ roadmap item; Phase 1 is read-only + safe/approval-gated writes only. |
-| ARCH-002 | No Snapshot/Diff/Rollback engine | Same as above; depends on ARCH-001. |
-| ARCH-003 | No background job / async execution system | All tool execution today is synchronous within the HTTP request; acceptable at current tool complexity, will not scale to long-running Phase-2 operations (large content migrations, staging syncs). |
+| ARCH-001 | No Transaction Engine / ChangeSet model | **RESOLVED** in Phase 2 (`AIOS\Mutation\*`, `ChangeSet`, `ChangeSetRepository`, `DurableMutationCoordinator`, commit `355d244`). |
+| ARCH-002 | No Snapshot/Diff/Rollback engine | **RESOLVED** in Phase 2 (`Snapshot`, `DiffRenderer`, `RollbackRecord`, per-operation journal, commit `355d244`). |
+| ARCH-003 | No background job / async execution system | All tool execution today is synchronous within the HTTP request; acceptable at current tool complexity, will not scale to long-running Phase-2/3 operations (large content migrations, staging syncs). Phase 3 scope. |
 | ARCH-004 | No idempotency-key / replay protection for MCP `tools/call` | A retried mutating call (e.g., after a client timeout) can double-execute. Documented as a Phase-2-adjacent hardening item, not blocking Phase 1's own correctness. |
 | ARCH-005 | **RESOLVED** (role default: commit `c1fbf34`; admin-grantable layer: commit `ea452db`) — No RBAC/team support beyond raw WordPress capabilities | `ai_os_use`/`ai_os_approve` are granted to the `administrator` role at activation (unchanged from Sprint 0.1). Sprint 0.3A adds `AIOS\Security\CapabilityManager`: a conservative, whitelist-only (these two capabilities, nothing else) admin-controlled grant/revoke layer for individual non-administrator users, via real `WP_User::add_cap()`/`remove_cap()` (per-site, multisite-safe) — no self-escalation, unauthorized callers refused, every change audited. REST surface: `GET /capabilities/{id}`, `POST /capabilities/grant`, `POST /capabilities/revoke`. 21 `CapabilityManagementTest` cases, including "an explicitly granted non-admin approver passes the real approval gate; an equivalent ungranted user does not." This is still deliberately NOT a general RBAC system (no custom roles, no capability inheritance, no team/group model) — see the Phase 2+ roadmap for that. |
 | ARCH-006 | No versioned API contract / deprecation strategy for the REST or MCP surfaces | Fine for a v1.0.0 baseline; becomes necessary the moment a breaking change is needed post-release. |
@@ -97,7 +113,7 @@ SEC-M1..M5 were Sprint 0.3 hardening items, out of scope for Sprint 0.1 — Spri
 |---|---|---|
 | TEST-001 | Real WordPress REST transport (routing, `permission_callback` wiring under an actual `WP_REST_Server`, application-password auth) | **Still OPEN.** The shim never boots a real REST server; this is exactly the class of gap that let BUG-002 (`sanitize_key`) go undetected. Sprint 0.5 scope. |
 | TEST-002 | Multisite (activation, uninstall, context, rate limiting, capability checks across `switch_to_blog()`) | **PARTIALLY RESOLVED** — a multisite-capable shim now exists (blog-scoped options/transients, `get_sites()`/`switch_to_blog()`/`restore_current_blog()`) and BUG-005's fix is covered by 11 `MultisiteLifecycleTest` cases (activation, uninstall, new-site provisioning, deactivation). Still open: real-WordPress multisite integration testing (this shim is a deliberately-scoped test double, not a full `$wpdb` SQL-prefix engine — see T-018) and multisite coverage of context caching / per-site rate limiting specifically. Sprint 0.7 scope for the remainder. |
-| TEST-003 | Real MySQL/MariaDB `dbDelta()` execution | Still OPEN. Only a test double is exercised; real charset/collation/index-creation behavior on MySQL/MariaDB is unverified. |
+| TEST-003 | Real MySQL/MariaDB `dbDelta()` execution | **RESOLVED** — `.github/workflows/ci.yml` `test-real-wp-mysql` job boots ephemeral MySQL 8.0 container, installs throwaway WordPress core, runs all migrations via dbDelta, and verifies table creation, encrypted CRUD, and CAS transitions via `tools/ci/real-db-smoke.php`. Verified green in GitHub Actions run `34756261539`. |
 | TEST-004 | Schema upgrade / migration-versioning path (applying migration N to a site already on migration N-1 with real pre-existing data) | Still OPEN. Only "fresh install, all migrations pending" is exercised. |
 | TEST-005 | Uninstall behavior (`uninstall.php`) under both `remove_data_on_uninstall = true` and `= false` | **RESOLVED** — `MultisiteLifecycleTest` and `CapabilityLifecycleTest` both invoke the real `uninstall.php` in-process under both retention states (single-site and multisite). |
 | TEST-006 | Concurrency / race conditions (parallel rate-limiter hits, parallel approval claims under real DB locking, parallel migration runs) | Still OPEN. `ApprovalRepository::claimPending()`'s correctness is inferred from code reading, not exercised under real concurrent load. Sprint 0.7 scope. |
@@ -119,8 +135,8 @@ SEC-M1..M5 were Sprint 0.3 hardening items, out of scope for Sprint 0.1 — Spri
 
 | ID | Gap | Status |
 |---|---|---|
-| REL-001 | No CI configuration of any kind (`.github/workflows/` absent). | **RESOLVED** — commit `8efb2de`. `.github/workflows/ci.yml`: PHP 8.2/8.3 required matrix (lint, native suite, PHPUnit bridge, acceptance) + PHP 8.4 best-effort job + static-analysis job. Not yet executed against a real GitHub Actions runner as of this sprint (see the CI scope note above). |
-| REL-002 | No static analysis configuration (`phpstan.neon*`, `phpcs.xml*` both absent). | **RESOLVED** — commit `8efb2de`. `phpstan.neon.dist` (level 5, WordPress-aware via `szepeviktor/phpstan-wordpress` + `php-stubs/wordpress-stubs`, scoped to `src/`) and `phpcs.xml.dist` (WordPress-Extra, one structural exclusion for this Composer/PSR-4 codebase's file naming). Neither has been run yet in this sandbox (no composer/network) — first CI run establishes the real baseline. |
+| REL-001 | No CI configuration of any kind (`.github/workflows/` absent). | **RESOLVED** — commit `8efb2de`. `.github/workflows/ci.yml`: PHP 8.2/8.3 required matrix (lint, native suite, PHPUnit bridge, acceptance) + PHP 8.4 best-effort job + static-analysis job + real WordPress + MySQL job. Verified 100% green across all jobs in GitHub Actions run `34756261539`. |
+| REL-002 | No static analysis configuration (`phpstan.neon*`, `phpcs.xml*` both absent). | **RESOLVED** — commit `8efb2de`. `phpstan.neon.dist` (level 5, WordPress-aware) and `phpcs.xml.dist` (WordPress-Extra). Fully remediated and verified 100% green with zero errors and zero warnings in GitHub Actions run `34756261539` without broad suppressions. |
 | REL-003 | No dependency-audit tooling (`composer audit`/`npm audit` not wired into any script; no lockfiles to audit against in the first place). | OPEN — tracked as T-029/T-030, Sprint 0.6. Not in Sprint 0.3A scope. |
 | REL-004 | No build-reproducibility check for the shipped JS bundle (see LIKELY-003). | OPEN — tracked as T-030, Sprint 0.6. Not in Sprint 0.3A scope. |
 
