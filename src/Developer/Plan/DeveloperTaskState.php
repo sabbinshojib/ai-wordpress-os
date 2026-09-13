@@ -82,7 +82,7 @@ final class DeveloperTaskState {
 			return false;
 		}
 
-		return in_array( $to, self::TRANSITIONS[ $from ] ?? array(), true );
+		return in_array( $to, self::TRANSITIONS[ $from ], true );
 	}
 
 	/**

@@ -16,7 +16,6 @@ namespace AIOS\Developer\Plan;
 use AIOS\Developer\Plan\Internal\InternalTaskPlanInput;
 use AIOS\Developer\Support\DeveloperTestIdentifier;
 use AIOS\Developer\Support\JsonSafeValidator;
-use AIOS\Security\PathGuard;
 use AIOS\Settings\Settings;
 
 final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
@@ -27,19 +26,12 @@ final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
 	private ?Settings $settings;
 
 	/**
-	 * PathGuard for file operations.
-	 */
-	private ?PathGuard $pathGuard;
-
-	/**
 	 * Constructor.
 	 *
-	 * @param Settings|null  $settings   Settings collaborator.
-	 * @param PathGuard|null $path_guard PathGuard collaborator.
+	 * @param Settings|null $settings Settings collaborator.
 	 */
-	public function __construct( ?Settings $settings = null, ?PathGuard $path_guard = null ) {
-		$this->settings  = $settings;
-		$this->pathGuard = $path_guard;
+	public function __construct( ?Settings $settings = null ) {
+		$this->settings = $settings;
 	}
 
 	/**
