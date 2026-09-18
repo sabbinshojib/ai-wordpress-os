@@ -73,7 +73,7 @@ final class JsonSafeValidator {
 				$is_assoc = true;
 				break;
 			}
-			$i++;
+			++$i;
 		}
 
 		$result = array();

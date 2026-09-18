@@ -86,7 +86,7 @@ final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
 			);
 		}
 
-		$tests         = $input->testStrategies();
+		$tests = $input->testStrategies();
 		DeveloperTestIdentifier::assertAllValid( $tests );
 
 		$required_caps = DeveloperTaskPlan::deriveRequiredCapabilities( $operations, $request->scope(), $tests );

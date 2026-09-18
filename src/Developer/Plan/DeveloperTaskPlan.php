@@ -305,7 +305,7 @@ final class DeveloperTaskPlan {
 		);
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode -- fingerprint producer: plain json_encode() keeps byte-stable output across WP versions.
-		$json = (string) json_encode( $payload, JSON_UNESCAPED_SLASHES );
+		$json                    = (string) json_encode( $payload, JSON_UNESCAPED_SLASHES );
 		$this->cachedFingerprint = hash( 'sha256', $json );
 
 		return $this->cachedFingerprint;
@@ -485,7 +485,7 @@ final class DeveloperTaskPlan {
 		$max_level = PermissionEngine::LEVEL_READ;
 
 		foreach ( $operations as $op ) {
-			$type = is_array( $op ) && isset( $op['type'] ) && is_string( $op['type'] ) ? $op['type'] : '';
+			$type     = is_array( $op ) && isset( $op['type'] ) && is_string( $op['type'] ) ? $op['type'] : '';
 			$op_level = match ( $type ) {
 				'file.delete' => PermissionEngine::LEVEL_DESTRUCTIVE,
 				'file.create', 'file.patch' => PermissionEngine::LEVEL_SENSITIVE,
