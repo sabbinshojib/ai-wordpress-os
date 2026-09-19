@@ -127,7 +127,9 @@
 
 > **2026-09-13 (Phase 2 Closeout):** Items 1–8 below (Transaction Engine through Rollback system) are fully implemented in `AIOS\Mutation\*`, tested (456/456 native, 13/13 acceptance), and verified green across GitHub Actions CI run `34756261539` (including real WordPress + MySQL execution, PHPStan level 5, and PHPCS WordPress-Extra).
 >
-> **Phase 3 Status:** **READY TO START** — but **NOT STARTED**. Phase 3 encompasses Jobs/background execution (item 9) and builder intelligence integrations (items 10–16). Phase 4+ (items 17–20) remain untouched. See `docs/audits/SPRINT-0.3-PHASE2-EXIT-GATE-REPORT.md`.
+> **Phase 3 Status:** **READY TO START** — but **NOT STARTED** at the item-9..16 level below. Phase 3 encompasses Jobs/background execution (item 9) and builder intelligence integrations (items 10–16). Phase 4+ (items 17–20) remain untouched. See `docs/audits/SPRINT-0.3-PHASE2-EXIT-GATE-REPORT.md`.
+>
+> **2026-09-19:** A finer-grained sub-track within Phase 3 (P3-A, P3-B, ...) covers the `AIOS\Developer\*` task-planning/repository-intelligence layer that items 9–16 above will eventually consume. P3-A (task planner, schemas, capability model) is `DONE`. P3-B (Repository Intelligence — read-only repo/git inspection feeding the planner) is formally specified but not implemented: see `docs/roadmap/P3-B-REPOSITORY-INTELLIGENCE-SPEC.md` and the corresponding task rows (T-110..T-114) in `docs/roadmap/IMPLEMENTATION-TRACKER.md`.
 
 
 1. **Transaction Engine** — foundational; every item below depends on it.

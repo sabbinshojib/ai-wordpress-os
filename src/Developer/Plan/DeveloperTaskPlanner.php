@@ -14,8 +14,11 @@ declare( strict_types=1 );
 namespace AIOS\Developer\Plan;
 
 use AIOS\Developer\Plan\Internal\InternalTaskPlanInput;
+use AIOS\Developer\Repository\GitInspector;
+use AIOS\Developer\Repository\RepositoryScanner;
 use AIOS\Developer\Support\DeveloperTestIdentifier;
 use AIOS\Developer\Support\JsonSafeValidator;
+use AIOS\Security\PathGuardException;
 use AIOS\Settings\Settings;
 
 final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
@@ -26,19 +29,39 @@ final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
 	private ?Settings $settings;
 
 	/**
+	 * Repository scanner collaborator (P3-B). Null preserves the exact
+	 * P3-A behavior (no repository-intelligence metadata populated).
+	 */
+	private ?RepositoryScanner $repositoryScanner;
+
+	/**
+	 * Git inspector collaborator (P3-B). Null preserves the exact P3-A
+	 * behavior (no git-intelligence metadata populated).
+	 */
+	private ?GitInspector $gitInspector;
+
+	/**
 	 * Constructor.
 	 *
-	 * @param Settings|null $settings Settings collaborator.
+	 * @param Settings|null          $settings           Settings collaborator.
+	 * @param RepositoryScanner|null $repository_scanner P3-B read-only repository scanner; omit to keep P3-A behavior unchanged.
+	 * @param GitInspector|null      $git_inspector      P3-B read-only git inspector; omit to keep P3-A behavior unchanged.
 	 */
-	public function __construct( ?Settings $settings = null ) {
-		$this->settings = $settings;
+	public function __construct( ?Settings $settings = null, ?RepositoryScanner $repository_scanner = null, ?GitInspector $git_inspector = null ) {
+		$this->settings          = $settings;
+		$this->repositoryScanner = $repository_scanner;
+		$this->gitInspector      = $git_inspector;
 	}
 
 	/**
 	 * Plan a task from an external high-level request.
 	 *
 	 * In P3-A, high-level requests without internal operation specs produce
-	 * read-only inspection plans.
+	 * read-only inspection plans. P3-B (when a RepositoryScanner and/or
+	 * GitInspector collaborator is supplied) additionally populates the
+	 * plan's metadata with real, read-only repository/git findings for a
+	 * non-empty scope — operations remain empty either way; P3-B never
+	 * emits operations.
 	 *
 	 * @param DeveloperTaskRequest $request The high-level request.
 	 * @return DeveloperTaskPlan The generated plan.
@@ -51,6 +74,7 @@ final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
 		$risk_level    = DeveloperTaskPlan::deriveRiskLevel( $operations, $required_caps );
 		$approval      = $this->resolveApprovalRequirement( $risk_level );
 		$created_at    = time();
+		$metadata      = $this->withRepositoryIntelligence( $request->metadata(), $request->scope() );
 
 		return new DeveloperTaskPlan(
 			$task_id,
@@ -64,7 +88,7 @@ final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
 			$request->principalUserId(),
 			$request->siteId(),
 			$created_at,
-			$request->metadata()
+			$metadata
 		);
 	}
 
@@ -108,6 +132,58 @@ final class DeveloperTaskPlanner implements DeveloperTaskPlannerInterface {
 			$created_at,
 			$request->metadata()
 		);
+	}
+
+	/**
+	 * Merge best-effort, read-only repository/git findings into plan
+	 * metadata. Never throws: any scan/inspection failure is recorded as
+	 * an error string under the same namespaced metadata key rather than
+	 * propagating, since repository intelligence is informational and
+	 * must never block plan creation. A no-op (returns $metadata as-is)
+	 * when no scope is given or no P3-B collaborator was injected — this
+	 * is what keeps every existing P3-A caller's behavior byte-identical.
+	 *
+	 * @param array<string, mixed> $metadata Request metadata.
+	 * @param string[]              $scope    Request scope paths.
+	 * @return array<string, mixed>
+	 */
+	private function withRepositoryIntelligence( array $metadata, array $scope ): array {
+		if ( array() === $scope || ( null === $this->repositoryScanner && null === $this->gitInspector ) ) {
+			return $metadata;
+		}
+
+		if ( null !== $this->repositoryScanner ) {
+			$scans = array();
+			foreach ( $scope as $scope_path ) {
+				if ( ! is_string( $scope_path ) || '' === $scope_path ) {
+					continue;
+				}
+				try {
+					$scans[ $scope_path ] = $this->repositoryScanner->scan( $scope_path )->toArray();
+				} catch ( PathGuardException $e ) {
+					$scans[ $scope_path ] = array(
+						'error'  => $e->getMessage(),
+						'reason' => $e->reason(),
+					);
+				}
+			}
+			$metadata['p3b_repository_scan'] = $scans;
+		}
+
+		if ( null !== $this->gitInspector ) {
+			try {
+				$metadata['p3b_git_inspection'] = $this->gitInspector->inspect()->toArray();
+			} catch ( \Throwable $e ) {
+				$metadata['p3b_git_inspection'] = array(
+					'available' => false,
+					'error'     => $e->getMessage(),
+				);
+			}
+		}
+
+		JsonSafeValidator::assertJsonSafe( $metadata, 'metadata' );
+
+		return $metadata;
 	}
 
 	/**

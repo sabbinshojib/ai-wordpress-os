@@ -593,3 +593,102 @@ Invariants enforced by construction (verified, not aspirational):
 - `Audit` records every attempt, not just successes.
 - `RollbackRecord`s are generated at `Snapshot` time, before any mutation — never
   reconstructed after the fact from partial state.
+
+## 14. Phase 3 (P3-B) repository intelligence layer — IMPLEMENTED, library-only
+
+`AIOS\Developer\Repository\*` gives `AIOS\Developer\Plan\DeveloperTaskPlanner` a real,
+read-only way to inspect the actual plugin repository (filesystem contents within
+`PathGuard`'s root, and git metadata), so a `DeveloperTaskRequest` with a real `scope()`
+resolves against real repository state instead of always producing an empty-operation,
+unconditionally-approved plan. It implements the four already-whitelisted, previously
+unimplemented `LEVEL_READ` developer capabilities (`INSPECT_REPO`, `INSPECT_GIT`,
+`DIAGNOSE_FAILURE`, `PROPOSE_REPAIR`) — see
+`docs/roadmap/P3-B-REPOSITORY-INTELLIGENCE-SPEC.md` for the full spec this section
+reports against.
+
+**Status (2026-09-19): DONE — implemented and tested, no AI-facing exposure.**
+- `RepositoryScanner` (T-110): enumerates files/directories under a `PathGuard`-bounded
+  scope path, returning `RepositoryScanEntry` metadata (root-relative path, directory
+  flag, size, mtime, and — for `.php` files — a best-effort namespace/class name parsed
+  from the first 8 KiB of the file, never the full content). Every scope path is
+  resolved and confined exclusively through `PathGuard` (`root()`, `isInsideRoot()`,
+  `isProtected()`, `isAllowedExtension()`) — no second, parallel path-safety mechanism.
+  Fails closed (`PathGuardException`, distinct `E_TRAVERSAL`/`E_OUTSIDE_ROOT`/
+  `E_INVALID`/`E_NOT_FOUND`/`E_PROTECTED` reasons) on traversal, absolute-path escape,
+  empty scope, a missing path, or a `PathGuard`-protected file (e.g. `wp-config.php`);
+  never silently clamps or partially lists past a rejection. `.git`, `node_modules`,
+  and `vendor` are skipped as noise, not as a security boundary (`PathGuard` already
+  denies protected paths independently of this list). Symlinks are never followed.
+  Results are bounded by a caller-supplied cap clamped to a hard ceiling (5000
+  entries) and report `truncated` explicitly rather than silently dropping entries.
+- `GitInspector` (T-111): a read-only git adapter — `inspect()` (branch, `HEAD` SHA,
+  clean/dirty working-tree status with the exact changed-file list from
+  `git status --porcelain=v1`), `log()` (bounded commit history), `diffStat()`
+  (diffstat for a single, strictly-validated ref or ref-range). Every invocation is a
+  hardcoded argv array passed to `proc_open()` — never a shell string, never user input
+  string-concatenated into a command line. There is no generic passthrough method: only
+  `rev-parse`, `status --porcelain=v1`, `log`, and `diff --stat` are reachable through
+  this class's public API, so a write subcommand (`commit`, `push`, `merge`, `reset`,
+  `clean`, `checkout -- <path>`) is structurally absent from the code, not merely
+  filtered at runtime. `diffStat()`'s only free-form input (`ref_range`) is rejected
+  outright unless it matches a strict ref/ref-range shape before it ever reaches git,
+  ruling out flag injection (e.g. a leading `-`) and shell-metacharacter/whitespace
+  shapes.
+- `FailureDiagnoser` (T-112): parses a caller-supplied PHPUnit/PHPStan/PHPCS text
+  payload into one or more structured `FailureDiagnosis` value objects (category, file,
+  line, message, source tool). Never executes PHPUnit, PHPStan, or PHPCS itself — it is
+  handed output text the caller already produced elsewhere, keeping it decoupled from
+  test/analysis execution (a separate, later, out-of-scope concern). An empty or
+  unrecognized payload returns a single `CATEGORY_UNPARSEABLE` diagnosis rather than
+  throwing or guessing at a location.
+- `RepairProposer` (T-113): turns a `FailureDiagnosis` into a `RepairProposal` — a
+  descriptive, structured, non-binding suggestion (summary, target file/line,
+  suggested approach, confidence, rationale, `actionable` flag). `RepairProposal` is
+  provably distinct from `AIOS\Mutation\OperationSpecification`: neither
+  `RepairProposal` nor `RepairProposer` imports or type-hints against it anywhere
+  (asserted directly against the source text, not merely by convention), and no method
+  on either class constructs, wraps, or returns one. Applying an actual fix requires a
+  separate, later, human-authored/approved mutation task — this layer stops at
+  description.
+- **Planner wiring (T-114):** `DeveloperTaskPlanner`'s constructor takes two new,
+  optional collaborators (`?RepositoryScanner $repository_scanner`,
+  `?GitInspector $git_inspector`, both defaulting to `null`). When a `plan()` call has a
+  non-empty `scope()` and at least one collaborator is present, the resulting
+  `DeveloperTaskPlan::metadata()` gains `p3b_repository_scan` (keyed by scope path,
+  each entry either a `RepositoryScanResult::toArray()` or, on a `PathGuardException`,
+  a recorded `{error, reason}` pair rather than a thrown exception) and/or
+  `p3b_git_inspection` (`GitInspectionResult::toArray()`, or a recorded error on any
+  `\Throwable`). `operations()` remains `array()` in every case — P3-B never emits
+  operations, only informational metadata. Omitting both collaborators (the default)
+  reproduces P3-A's exact prior behavior byte-for-byte; this is itself a regression
+  test (`test_plan_without_p3b_collaborators_is_byte_identical_to_p3a`), not merely an
+  assumption.
+- **JSON-safety**: every value that crosses into `DeveloperTaskPlan::metadata()` is
+  passed through the existing `AIOS\Developer\Support\JsonSafeValidator` convention
+  already established in P3-A, with no new serialization mechanism introduced.
+- **No AI-facing exposure, verified by direct grep, not assumed:** a repository-wide
+  search for `RepositoryScanner`/`GitInspector`/`FailureDiagnoser`/`RepairProposer`
+  under `src/Rest`, `src/Mcp`, `src/Tools` returns no matches — this layer is
+  container-bindable and directly tested like Phase 2's mutation pipeline (§13), but
+  nothing outside `src/Developer/*` can reach it yet.
+
+**Tested** (P3-B test files, all green as part of the project's full native suite):
+`RepositoryScannerTest` (in-root enumeration, PHP namespace/class extraction,
+traversal/absolute-escape/empty-scope/missing-path/protected-file rejection,
+`.git` directory exclusion, max-entries truncation, JSON-safety), `GitInspectorTest`
+(branch/SHA/status correctness against a disposable git fixture verified against
+out-of-band `git` invocations, dirty-tree reporting, bounded log, ref-range
+flag-injection/whitespace rejection, non-git-directory handling), `FailureDiagnoserTest`
+(real historical PHPUnit failure-format parsing, multi-failure parsing, PHPStan raw
+format, PHPCS default report format, auto-detection, malformed/empty-payload
+unparseable handling), `RepairProposerTest` (actionable vs. non-actionable proposals,
+confidence levels, the `OperationSpecification` source-level import/type-hint boundary
+assertions, JSON-safety), and `DeveloperTaskPlannerTest`'s four new P3-B cases
+(byte-identical no-collaborator behavior, populated scan metadata, recorded scan error
+without throwing, empty-scope no-op).
+
+**Not implemented — explicit gap, not silently deferred:** no component yet runs
+PHPUnit/PHPStan/PHPCS and hands their output to `FailureDiagnoser` at runtime; T-112/
+T-113 take that payload as a plain caller-supplied argument by design, decoupling this
+layer from test execution. Wiring an actual test-runner to produce that payload is a
+separate, later phase (QA automation), not a P3-B blocker.

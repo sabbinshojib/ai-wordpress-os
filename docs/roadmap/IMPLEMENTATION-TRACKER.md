@@ -118,3 +118,63 @@ Original T-005/T-008/T-009 rows (the pre-sprint plan) are superseded by T-005b/T
 | 1.3 | T-109 | Jobs / background execution | High | T-101 | Required before long-running mutations are safe to expose | Job-queue integration tests | TODO | Roadmap Phase 3 | |
 
 Later Phase 3+ items (WordPress developer capabilities, Gutenberg, Elementor, WooCommerce, ACF/MetaBox/Pods, forms, SEO, staging/deployment, visual QA, multi-agent orchestration, enterprise RBAC) are intentionally not pre-seeded with task IDs here — they will be broken down at the start of their respective sprint now that the Phase 2 foundation (T-101..T-108) is verified complete and closed.
+
+## Phase 3 — P3-A Developer task planning (DONE)
+
+P3-A (`DeveloperTaskRequest`, `DeveloperTaskPlan`, `DeveloperTaskPlanner`,
+`DeveloperCapability`, `DeveloperPolicy`) landed on commits `b0b97de`, `24508f5`,
+`6eda320`. Not individually task-ID'd at the time; recorded here for continuity
+into P3-B below.
+
+## Phase 3 — P3-B Repository Intelligence (IMPLEMENTED — pending commit)
+
+**2026-09-19 update (seeding):** P3-B was formally specified
+(documentation/planning only, no implementation) in
+`docs/roadmap/P3-B-REPOSITORY-INTELLIGENCE-SPEC.md`. It gives
+`DeveloperTaskPlanner::plan()` a real, read-only way to inspect repository
+files and git state, replacing today's always-empty-operations stub for external
+requests. Scope is deliberately bounded to the four already-whitelisted
+`LEVEL_READ` capabilities (`INSPECT_REPO`, `INSPECT_GIT`, `DIAGNOSE_FAILURE`,
+`PROPOSE_REPAIR`) — no code editing, no test execution, no git writes, no
+REST/MCP exposure. Full spec, acceptance criteria, and non-goals: see that
+document.
+
+**2026-09-19 update (implementation):** All five tasks below (T-110..T-114)
+are implemented and verified locally on branch `sprint/0.3-security-ci`,
+working tree not yet committed. Verification performed: targeted P3-B suites
+50/50 (`RepositoryScannerTest` 11, `GitInspectorTest` 9, `FailureDiagnoserTest`
+9, `RepairProposerTest` 9, `DeveloperTaskPlannerTest` 12 including 4 new P3-B
+cases); full native suite `php tests/run.php` 536/536; PHPUnit native-bridge
+suite `vendor/bin/phpunit -c phpunit.xml.dist` 47/47 (1 pre-existing PHPUnit-10
+framework deprecation notice, unrelated to P3-B, also present on untouched
+classes); `php tests/acceptance.php` 13/13; `vendor/bin/phpstan analyse
+--memory-limit=1G` 0 errors; `vendor/bin/phpcs` (project's real CI scope,
+`src/` only per `phpcs.xml.dist`) 0 errors/0 warnings on all P3-B `src/` files;
+`php -l` clean on all new/changed files; grep sweep of `src/Rest`, `src/Mcp`,
+`src/Tools` for `RepositoryScanner`/`GitInspector`/`FailureDiagnoser`/
+`RepairProposer` returned no matches (library-only, no AI-facing exposure).
+Commit hashes below are left blank per this file's own convention (§ header)
+until the working tree is actually committed — that is intentionally outside
+this task's scope.
+
+**2026-09-19 update (resume/verification pass):** Re-verified independently
+(fresh `php tests/run.php` 536/536, `vendor/bin/phpunit -c phpunit.xml.dist`
+47/47, `php tests/acceptance.php` 13/13, `vendor/bin/phpstan analyse
+--memory-limit=1G` 0 errors, `vendor/bin/phpcs` 0 errors/0 warnings including
+an explicit direct run against `src/Developer/Repository` +
+`DeveloperTaskPlanner.php`, `php -l` clean on all P3-B files, `git diff
+--check` clean, grep sweep of `src/Rest`/`src/Mcp`/`src/Tools` empty) — all
+prior claims held. One genuine gap found and closed: `docs/ARCHITECTURE.md`
+§14 (a new "Phase 3 (P3-B) repository intelligence layer" subsection,
+matching the "implemented and tested" evidentiary style of §13) had not
+actually been added despite being listed as a P3-B deliverable (spec §11)
+and Definition-of-Done item (spec §13); it is now present. No other gaps
+found; no source/test logic changed this pass.
+
+| Sprint | Task ID | Task | Priority | Dependency | Security impact | Tests required | Status | Evidence | Commit |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.4 | T-110 | `RepositoryScanner`: enumerate files/directories under a `PathGuard`-bounded scope path with metadata | High | P3-A (`DONE`), `PathGuard` (`DONE`) | Read-only; must fail closed on any out-of-root scope, reusing `PathGuard` exclusively | `RepositoryScannerTest` (in-root, out-of-root rejection, empty scope, JSON-safety) | **DONE** — implemented, 11/11 tests green, PHPStan/PHPCS clean | P3-B spec §6, §7; ARCHITECTURE.md §14 | |
+| 1.4 | T-111 | `GitInspector`: read-only git adapter (branch, `HEAD` SHA, status, bounded log/diff) via fixed argv whitelist | High | P3-A (`DONE`) | Read-only; whitelist must make write/dangerous git subcommands structurally unreachable, not just filtered | `GitInspectorTest` (branch/SHA/status correctness, whitelist enforcement) | **DONE** — implemented, 9/9 tests green, PHPStan/PHPCS clean; only `status`/`log`/`diff --stat`/`rev-parse` reachable, no generic passthrough | P3-B spec §6, §7; ARCHITECTURE.md §14 | |
+| 1.4 | T-112 | `FailureDiagnoser`: parse a caller-supplied PHPUnit/PHPStan/PHPCS payload into a structured diagnosis | Medium | T-110/T-111 not required; independent | None directly; must not execute tests itself, only parse supplied output | `FailureDiagnoserTest` (real historical failure fixture + malformed-payload case) | **DONE** — implemented, 9/9 tests green, PHPStan/PHPCS clean | P3-B spec §6, §7; ARCHITECTURE.md §14 | |
+| 1.4 | T-113 | `RepairProposer`: produce a structured, non-binding repair proposal from a `FailureDiagnosis` | Medium | T-112 | Must be provably distinct from `OperationSpecification`; no auto-apply path | `RepairProposerTest` (type-boundary assertion, unparseable passthrough) | **DONE** — implemented, 9/9 tests green including source-level import/type-hint boundary assertions | P3-B spec §6, §7; ARCHITECTURE.md §14 | |
+| 1.4 | T-114 | Wire `RepositoryScanner`/`GitInspector` into `DeveloperTaskPlanner::plan()` for non-empty scope requests | High | T-110, T-111 | Must not introduce operations for external requests; existing empty-scope P3-A tests must remain green | `DeveloperTaskPlannerTest` extended with populated-metadata cases | **DONE** — implemented via optional constructor-injected collaborators (null-safe, byte-identical P3-A behavior when omitted); 12/12 `DeveloperTaskPlannerTest` cases green including 4 new P3-B cases | P3-B spec §6, §7; ARCHITECTURE.md §14 | |

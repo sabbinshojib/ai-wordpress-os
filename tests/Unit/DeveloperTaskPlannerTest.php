@@ -17,11 +17,13 @@ use AIOS\Developer\Capability\DeveloperCapability;
 use AIOS\Developer\Plan\DeveloperTaskPlanner;
 use AIOS\Developer\Plan\DeveloperTaskRequest;
 use AIOS\Developer\Plan\Internal\InternalTaskPlanInput;
+use AIOS\Developer\Repository\RepositoryScanner;
 use AIOS\Developer\Support\DeveloperTestIdentifier;
 use AIOS\Mutation\OperationSpecification;
 use AIOS\Mutation\Operations\FileDeleteOperation;
 use AIOS\Mutation\Operations\FilePatchOperation;
 use AIOS\Mutation\Operations\OptionUpdateOperation;
+use AIOS\Security\PathGuard;
 use AIOS\Security\PermissionEngine;
 use AIOS\Settings\Settings;
 use AIOS\Tests\TestCase;
@@ -191,5 +193,91 @@ final class DeveloperTaskPlannerTest extends TestCase {
 			$this->assertStringContains( 'Invalid or unapproved test strategy', $e->getMessage() );
 		}
 		$this->assertTrue( $threw );
+	}
+
+	// ------------------------------------------------------------- P3-B
+
+	private string $repoRoot;
+
+	private function makeRepoFixture(): PathGuard {
+		$this->repoRoot = sys_get_temp_dir() . '/aios-plannerRepo-' . uniqid();
+		@mkdir( $this->repoRoot . '/src', 0777, true );
+		file_put_contents( $this->repoRoot . '/src/Foo.php', "<?php\nnamespace AIOS;\nclass Foo {}\n" );
+		return new PathGuard( $this->repoRoot );
+	}
+
+	private function cleanupRepoFixture(): void {
+		if ( ! isset( $this->repoRoot ) || ! is_dir( $this->repoRoot ) ) {
+			return;
+		}
+		$this->rrmdir( $this->repoRoot );
+	}
+
+	private function rrmdir( string $dir ): void {
+		foreach ( scandir( $dir ) ?: array() as $entry ) {
+			if ( in_array( $entry, array( '.', '..' ), true ) ) {
+				continue;
+			}
+			$path = $dir . '/' . $entry;
+			is_dir( $path ) ? $this->rrmdir( $path ) : @unlink( $path );
+		}
+		@rmdir( $dir );
+	}
+
+	public function test_plan_without_p3b_collaborators_is_byte_identical_to_p3a(): void {
+		// No RepositoryScanner/GitInspector injected — must reproduce the
+		// exact P3-A empty-operations, empty-metadata-addition behavior.
+		$request = new DeveloperTaskRequest( 'Inspect codebase', array( 'src/' ), array(), 1, 1 );
+		$planner = new DeveloperTaskPlanner();
+		$plan    = $planner->plan( $request );
+
+		$this->assertCount( 0, $plan->operations() );
+		$this->assertEquals( array(), $plan->metadata() );
+	}
+
+	public function test_plan_with_scanner_populates_repository_scan_metadata(): void {
+		$guard   = $this->makeRepoFixture();
+		$scanner = new RepositoryScanner( $guard );
+
+		$request = new DeveloperTaskRequest( 'Inspect codebase', array( 'src' ), array(), 1, 1 );
+		$planner = new DeveloperTaskPlanner( null, $scanner );
+		$plan    = $planner->plan( $request );
+
+		$this->assertCount( 0, $plan->operations() );
+		$this->assertArrayHasKey( 'p3b_repository_scan', $plan->metadata() );
+		$this->assertArrayHasKey( 'src', $plan->metadata()['p3b_repository_scan'] );
+
+		$scan_entries = $plan->metadata()['p3b_repository_scan']['src']['entries'];
+		$paths        = array_map( static fn ( $e ) => $e['path'], $scan_entries );
+		$this->assertTrue( in_array( 'src/Foo.php', $paths, true ) );
+
+		$this->cleanupRepoFixture();
+	}
+
+	public function test_plan_with_scanner_records_error_for_invalid_scope_without_throwing(): void {
+		$guard   = $this->makeRepoFixture();
+		$scanner = new RepositoryScanner( $guard );
+
+		$request = new DeveloperTaskRequest( 'Inspect codebase', array( '../outside' ), array(), 1, 1 );
+		$planner = new DeveloperTaskPlanner( null, $scanner );
+		$plan    = $planner->plan( $request );
+
+		$this->assertCount( 0, $plan->operations() );
+		$this->assertArrayHasKey( 'error', $plan->metadata()['p3b_repository_scan']['../outside'] );
+
+		$this->cleanupRepoFixture();
+	}
+
+	public function test_plan_with_empty_scope_never_populates_p3b_metadata(): void {
+		$guard   = $this->makeRepoFixture();
+		$scanner = new RepositoryScanner( $guard );
+
+		$request = new DeveloperTaskRequest( 'Do something with no scope' );
+		$planner = new DeveloperTaskPlanner( null, $scanner );
+		$plan    = $planner->plan( $request );
+
+		$this->assertArrayNotHasKey( 'p3b_repository_scan', $plan->metadata() );
+
+		$this->cleanupRepoFixture();
 	}
 }
